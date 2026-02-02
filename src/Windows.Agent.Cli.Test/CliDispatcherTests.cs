@@ -28,7 +28,7 @@ public class CliDispatcherTests
 
         var output = new StringWriter();
         var exit = await CliDispatcher.RunAsync(
-            new[] { "desktop", "click", "--x", "1", "--y", "2", "--button", "left", "--clicks", "1", "--pretty" },
+            new[] { "desktop", "click", "--x", "1", "--y", "2", "--button", "left", "--clicks", "1", "--dangerous", "--pretty" },
             sp,
             output);
 
@@ -121,7 +121,7 @@ public class CliDispatcherTests
 
         var output = new StringWriter();
         var exit = await CliDispatcher.RunAsync(
-            new[] { "sys", "volume", "--percent", "30", "--pretty" },
+            new[] { "sys", "volume", "--percent", "30", "--dangerous", "--pretty" },
             sp,
             output);
 
@@ -149,7 +149,7 @@ public class CliDispatcherTests
 
         var output = new StringWriter();
         var exit = await CliDispatcher.RunAsync(
-            new[] { "desktop", "shortcut", "--keys", "ctrl+shift+esc", "--pretty" },
+            new[] { "desktop", "shortcut", "--keys", "ctrl+shift+esc", "--dangerous", "--pretty" },
             sp,
             output);
 
@@ -159,6 +159,42 @@ public class CliDispatcherTests
         using var doc = JsonDocument.Parse(output.ToString());
         Assert.Equal("Windows.Agent.Tools.Desktop.ShortcutTool.ShortcutAsync", doc.RootElement.GetProperty("tool").GetString());
         Assert.Equal("ok", doc.RootElement.GetProperty("result").GetProperty("raw").GetString());
+    }
+
+    [Fact]
+    public async Task DesktopClick_WithoutDangerous_ShouldFailBeforeResolvingTool()
+    {
+        var sp = BuildServiceProvider(_ => { });
+
+        var output = new StringWriter();
+        var exit = await CliDispatcher.RunAsync(
+            new[] { "desktop", "click", "--x", "1", "--y", "2", "--pretty" },
+            sp,
+            output);
+
+        Assert.Equal(1, exit);
+
+        using var doc = JsonDocument.Parse(output.ToString());
+        Assert.False(doc.RootElement.GetProperty("success").GetBoolean());
+        Assert.Contains("--dangerous", doc.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task SystemVolumePercent_WithoutDangerous_ShouldFailBeforeResolvingTool()
+    {
+        var sp = BuildServiceProvider(_ => { });
+
+        var output = new StringWriter();
+        var exit = await CliDispatcher.RunAsync(
+            new[] { "sys", "volume", "--percent", "30", "--pretty" },
+            sp,
+            output);
+
+        Assert.Equal(1, exit);
+
+        using var doc = JsonDocument.Parse(output.ToString());
+        Assert.False(doc.RootElement.GetProperty("success").GetBoolean());
+        Assert.Contains("--dangerous", doc.RootElement.GetProperty("error").GetString());
     }
 
     private static ServiceProvider BuildServiceProvider(Action<IServiceCollection> configure)

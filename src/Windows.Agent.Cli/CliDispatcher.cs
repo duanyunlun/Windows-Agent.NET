@@ -27,19 +27,20 @@ internal static class CliDispatcher
             var options = CliOptions.Parse(optionArgs);
 
             var pretty = options.GetBool("pretty", false);
+            var dangerous = options.GetBool("dangerous", false);
 
             switch (group)
             {
                 case "desktop":
-                    return await RunDesktopAsync(action, options, services, pretty, output);
+                    return await RunDesktopAsync(action, options, services, pretty, dangerous, output);
                 case "fs":
                 case "filesystem":
-                    return await RunFileSystemAsync(action, options, services, pretty, output);
+                    return await RunFileSystemAsync(action, options, services, pretty, dangerous, output);
                 case "ocr":
-                    return await RunOcrAsync(action, options, services, pretty, output);
+                    return await RunOcrAsync(action, options, services, pretty, dangerous, output);
                 case "sys":
                 case "system":
-                    return await RunSystemAsync(action, options, services, pretty, output);
+                    return await RunSystemAsync(action, options, services, pretty, dangerous, output);
                 default:
                     throw new ArgumentException($"Unknown command group: {group}");
             }
@@ -68,10 +69,11 @@ internal static class CliDispatcher
 
 通用 options：
   --pretty             JSON 美化输出
+  --dangerous          启用高危命令（默认禁用；涉及桌面交互/写文件/改系统设置/执行命令等）
 
 示例：
-  windows-agent desktop click --x 100 --y 200
-  wa desktop click --x 100 --y 200
+  windows-agent desktop click --x 100 --y 200 --dangerous
+  wa desktop click --x 100 --y 200 --dangerous
   windows-agent fs read --path ""C:\temp\a.txt""
 
 Desktop：
@@ -144,8 +146,13 @@ System：
         return 0;
     }
 
-    private static async Task<int> RunDesktopAsync(string action, CliOptions options, IServiceProvider services, bool pretty, TextWriter output)
+    private static async Task<int> RunDesktopAsync(string action, CliOptions options, IServiceProvider services, bool pretty, bool dangerous, TextWriter output)
     {
+        if (RequiresDangerousDesktop(action))
+        {
+            EnsureDangerous("desktop", action, dangerous);
+        }
+
         switch (action)
         {
             case "click":
@@ -346,8 +353,13 @@ System：
         }
     }
 
-    private static async Task<int> RunFileSystemAsync(string action, CliOptions options, IServiceProvider services, bool pretty, TextWriter output)
+    private static async Task<int> RunFileSystemAsync(string action, CliOptions options, IServiceProvider services, bool pretty, bool dangerous, TextWriter output)
     {
+        if (RequiresDangerousFileSystem(action))
+        {
+            EnsureDangerous("fs", action, dangerous);
+        }
+
         switch (action)
         {
             case "read":
@@ -455,7 +467,7 @@ System：
         }
     }
 
-    private static async Task<int> RunOcrAsync(string action, CliOptions options, IServiceProvider services, bool pretty, TextWriter output)
+    private static async Task<int> RunOcrAsync(string action, CliOptions options, IServiceProvider services, bool pretty, bool dangerous, TextWriter output)
     {
         switch (action)
         {
@@ -501,12 +513,17 @@ System：
         }
     }
 
-    private static async Task<int> RunSystemAsync(string action, CliOptions options, IServiceProvider services, bool pretty, TextWriter output)
+    private static async Task<int> RunSystemAsync(string action, CliOptions options, IServiceProvider services, bool pretty, bool dangerous, TextWriter output)
     {
         switch (action)
         {
             case "volume":
             {
+                if (options.Has("inc") || options.Has("dec") || options.Has("percent") || options.Has("mute"))
+                {
+                    EnsureDangerous("sys", action, dangerous);
+                }
+
                 var tool = services.GetRequiredService<VolumeTool>();
                 if (options.Has("mute"))
                 {
@@ -535,6 +552,11 @@ System：
             }
             case "brightness":
             {
+                if (options.Has("inc") || options.Has("dec") || options.Has("percent"))
+                {
+                    EnsureDangerous("sys", action, dangerous);
+                }
+
                 var tool = services.GetRequiredService<BrightnessTool>();
                 if (options.Has("percent"))
                 {
@@ -557,6 +579,7 @@ System：
             }
             case "resolution":
             {
+                EnsureDangerous("sys", action, dangerous);
                 var tool = services.GetRequiredService<ResolutionTool>();
                 var type = options.RequireString("type");
                 var raw = await tool.SetResolutionAsync(type);
@@ -566,6 +589,26 @@ System：
                 throw new ArgumentException($"Unknown system action: {action}");
         }
     }
+
+    private static void EnsureDangerous(string group, string action, bool dangerous)
+    {
+        if (dangerous)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException($"Command requires --dangerous: {group} {action}");
+    }
+
+    private static bool RequiresDangerousDesktop(string action)
+        => action is
+            "launch" or "switch" or "resize" or
+            "click" or "move" or "drag" or "scroll" or "type" or "key" or "shortcut" or "clipboard" or
+            "openbrowser" or "powershell";
+
+    private static bool RequiresDangerousFileSystem(string action)
+        => action is
+            "write" or "create" or "delete" or "copy" or "move" or "mkdir" or "rmdir";
 
     private static string[] SplitKeys(string keys)
     {

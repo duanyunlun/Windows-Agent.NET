@@ -62,8 +62,8 @@ dotnet run --project src/Windows.Agent.Cli/Windows.Agent.Cli.csproj -- help
 # 获取桌面状态（不做任何桌面操作）
 dotnet run --project src/Windows.Agent.Cli/Windows.Agent.Cli.csproj -- desktop state --pretty
 
-# 鼠标点击
-dotnet run --project src/Windows.Agent.Cli/Windows.Agent.Cli.csproj -- desktop click --x 100 --y 200 --button left --clicks 1
+ # 鼠标点击
+ dotnet run --project src/Windows.Agent.Cli/Windows.Agent.Cli.csproj -- desktop click --x 100 --y 200 --button left --clicks 1 --dangerous
 
 # 读取文件
 dotnet run --project src/Windows.Agent.Cli/Windows.Agent.Cli.csproj -- fs read --path \"C:\\\\temp\\\\a.txt\"
