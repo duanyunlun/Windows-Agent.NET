@@ -39,8 +39,8 @@ windows-agent help
 #### 方式二：从源码运行
 ```bash
 # 克隆仓库
-git clone https://github.com/AIDotNet/Windows.Agent.git
-cd Windows.Agent
+git clone https://github.com/duanyunlun/Windows-Agent.Net.git
+cd Windows-Agent.Net
 
 # 构建项目
 dotnet build
@@ -387,8 +387,8 @@ CLI 结果输出走 stdout；日志/诊断输出走 stderr（避免污染 stdout
 
 1. **克隆仓库**
    ```bash
-   git clone https://github.com/AIDotNet/Windows.Agent.git
-   cd Windows.Agent
+   git clone https://github.com/duanyunlun/Windows-Agent.Net.git
+   cd Windows-Agent.Net
    ```
 
 2. **安装依赖**
@@ -433,10 +433,10 @@ CLI 结果输出走 stdout；日志/诊断输出走 stderr（避免污染 stdout
 
 如果您遇到问题或有建议，请：
 
-1. 查看 [Issues](https://github.com/xuzeyu91/Windows.Agent/issues)
+1. 查看 [Issues](https://github.com/duanyunlun/Windows-Agent.Net/issues)
 2. 创建新的 Issue
 3. 参与讨论
-4. 查看 [Wiki](https://github.com/xuzeyu91/Windows.Agent/wiki) 获取更多帮助
+4. 查看 [Wiki](https://github.com/duanyunlun/Windows-Agent.Net/wiki) 获取更多帮助
 ---
 
 **注意**: 本工具需要适当的 Windows 权限来执行桌面自动化操作。请确保在受信任的环境中使用。

@@ -40,8 +40,8 @@ windows-agent help
 #### Method 2: Run from Source
 ```bash
 # Clone repository
-git clone https://github.com/AIDotNet/Windows.Agent.git
-cd Windows.Agent
+git clone https://github.com/duanyunlun/Windows-Agent.Net.git
+cd Windows-Agent.Net
 
 # Build project
 dotnet build
@@ -387,8 +387,8 @@ src/
 
 ```bash
 # Clone repository
-git clone https://github.com/AIDotNet/Windows.Agent.git
-cd Windows.Agent
+git clone https://github.com/duanyunlun/Windows-Agent.Net.git
+cd Windows-Agent.Net
 
 # Build project
 dotnet build
@@ -513,8 +513,8 @@ We welcome community contributions! If you want to contribute to the project, pl
 
 1. **Clone Repository**
    ```bash
-   git clone https://github.com/AIDotNet/Windows.Agent.git
-   cd Windows.Agent
+   git clone https://github.com/duanyunlun/Windows-Agent.Net.git
+   cd Windows-Agent.Net
    ```
 
 2. **Install Dependencies**
@@ -559,10 +559,10 @@ When reporting issues, please provide:
 
 If you encounter issues or have suggestions, please:
 
-1. Check [Issues](https://github.com/xuzeyu91/Windows.Agent/issues)
+1. Check [Issues](https://github.com/duanyunlun/Windows-Agent.Net/issues)
 2. Create a new Issue
 3. Participate in discussions
-4. Check [Wiki](https://github.com/xuzeyu91/Windows.Agent/wiki) for more help
+4. Check [Wiki](https://github.com/duanyunlun/Windows-Agent.Net/wiki) for more help
 
 ---
 
