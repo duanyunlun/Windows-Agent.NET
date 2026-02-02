@@ -64,13 +64,14 @@ internal static class CliDispatcher
 @"Windows Agent CLI (non-MCP)
 
 用法：
-  windows-agent <group> <action> [options]
+  windows-agent|wa <group> <action> [options]
 
 通用 options：
   --pretty             JSON 美化输出
 
 示例：
   windows-agent desktop click --x 100 --y 200
+  wa desktop click --x 100 --y 200
   windows-agent fs read --path ""C:\temp\a.txt""
 
 Desktop：

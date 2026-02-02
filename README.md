@@ -31,9 +31,11 @@
 #### 方式一：全局安装（推荐）
 ```bash
 dotnet tool install --global Windows.Agent.Cli
+dotnet tool install --global Windows.Agent.Cli.Alias
 
 # 查看帮助
 windows-agent help
+wa help
 ```
 
 #### 方式二：从源码运行
