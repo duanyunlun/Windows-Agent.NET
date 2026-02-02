@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using System.Text.Json;
 using Windows.Agent.Tools.OCR;
 using Windows.Agent.Interface;
-using Windows.Agent.Services;
 using System.Drawing;
 using System.Drawing.Imaging;
 
@@ -23,7 +22,7 @@ public class ExtractTextFromFileToolTest
 
         public ExtractTextFromFileToolTest()
         {
-            _ocrService = new OcrService();
+            _ocrService = new FakeOcrService();
             _logger = NullLogger<ExtractTextFromFileTool>.Instance;
             _tool = new ExtractTextFromFileTool(_ocrService, _logger);
             _testImageDirectory = Path.Combine(Directory.GetCurrentDirectory(), "TestImages");

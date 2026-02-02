@@ -33,10 +33,12 @@ public class ExtractTextFromFileTool
     public async Task<string> ExtractTextFromFileAsync(
         [Description("The file path to extract text from")] string path)
     {
+        ArgumentNullException.ThrowIfNull(path);
+
         try
         {
             _logger.LogInformation("Extracting text from file: {Path}", path);
-            
+             
             // 检查文件是否存在
             if (!File.Exists(path))
             {

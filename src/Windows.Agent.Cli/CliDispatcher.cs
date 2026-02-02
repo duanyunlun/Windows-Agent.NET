@@ -78,6 +78,7 @@ Desktop：
   desktop launch --name <app>
   desktop switch --name <app>
   desktop windowinfo --name <app>
+  desktop resize --name <app> [--width <int>] [--height <int>] [--x <int>] [--y <int>]
   desktop click --x <int> --y <int> [--button left|right|middle] [--clicks <int>]
   desktop move --x <int> --y <int>
   desktop drag --startx <int> --starty <int> --endx <int> --endy <int>
@@ -299,14 +300,28 @@ System：
                 var tool = services.GetRequiredService<UIElementTool>();
                 var type = options.RequireString("type");
                 var value = options.RequireString("value");
-                var raw = type.ToLowerInvariant() switch
+                var normalizedType = type.ToLowerInvariant();
+                string toolName;
+                string raw;
+                switch (normalizedType)
                 {
-                    "text" => await tool.FindElementByTextAsync(value),
-                    "classname" => await tool.FindElementByClassNameAsync(value),
-                    "automationid" => await tool.FindElementByAutomationIdAsync(value),
-                    _ => throw new ArgumentException("Invalid --type. Allowed: text, className, automationId")
-                };
-                return WriteToolResult("Windows.Agent.Tools.Desktop.UIElementTool.(Find*)", pretty, raw, output);
+                    case "text":
+                        toolName = "Windows.Agent.Tools.Desktop.UIElementTool.FindElementByTextAsync";
+                        raw = await tool.FindElementByTextAsync(value);
+                        break;
+                    case "classname":
+                        toolName = "Windows.Agent.Tools.Desktop.UIElementTool.FindElementByClassNameAsync";
+                        raw = await tool.FindElementByClassNameAsync(value);
+                        break;
+                    case "automationid":
+                        toolName = "Windows.Agent.Tools.Desktop.UIElementTool.FindElementByAutomationIdAsync";
+                        raw = await tool.FindElementByAutomationIdAsync(value);
+                        break;
+                    default:
+                        throw new ArgumentException("Invalid --type. Allowed: text, className, automationId");
+                }
+
+                return WriteToolResult(toolName, pretty, raw, output);
             }
             case "ui-props":
             {

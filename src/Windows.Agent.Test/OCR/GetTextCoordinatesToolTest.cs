@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using System.Text.Json;
 using Windows.Agent.Tools.OCR;
 using Windows.Agent.Interface;
-using Windows.Agent.Services;
 using System.Drawing;
 
 namespace Windows.Agent.Test.OCR
@@ -21,7 +20,7 @@ public class GetTextCoordinatesToolTest
 
         public GetTextCoordinatesToolTest()
         {
-            _ocrService = new OcrService();
+            _ocrService = new FakeOcrService();
             _logger = NullLogger<GetTextCoordinatesTool>.Instance;
             _tool = new GetTextCoordinatesTool(_ocrService, _logger);
         }

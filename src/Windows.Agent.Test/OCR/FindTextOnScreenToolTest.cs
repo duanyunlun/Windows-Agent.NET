@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using System.Text.Json;
 using Windows.Agent.Tools.OCR;
 using Windows.Agent.Interface;
-using Windows.Agent.Services;
 
 namespace Windows.Agent.Test.OCR
 {
@@ -20,7 +19,7 @@ public class FindTextOnScreenToolTest
 
         public FindTextOnScreenToolTest()
         {
-            _ocrService = new OcrService();
+            _ocrService = new FakeOcrService();
             _logger = NullLogger<FindTextOnScreenTool>.Instance;
             _tool = new FindTextOnScreenTool(_ocrService, _logger);
         }

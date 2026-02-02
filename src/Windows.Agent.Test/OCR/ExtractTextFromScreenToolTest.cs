@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using System.Text.Json;
 using Windows.Agent.Tools.OCR;
 using Windows.Agent.Interface;
-using Windows.Agent.Services;
 
 namespace Windows.Agent.Test.OCR
 {
@@ -20,7 +19,7 @@ public class ExtractTextFromScreenToolTest
 
         public ExtractTextFromScreenToolTest()
         {
-            _ocrService = new OcrService();
+            _ocrService = new FakeOcrService();
             _logger = NullLogger<ExtractTextFromScreenTool>.Instance;
             _tool = new ExtractTextFromScreenTool(_ocrService, _logger);
         }
