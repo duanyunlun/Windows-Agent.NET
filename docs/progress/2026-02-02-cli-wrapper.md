@@ -1,0 +1,29 @@
+# 2026-02-02：独立 CLI 工程改造进展
+
+## 状态
+
+- 已完成：
+  - 文档规划（优化清单、路线图、改造计划）。
+  - 新建独立 CLI 工程：`src/Windows.Agent.Cli/Windows.Agent.Cli.csproj` 并加入解决方案。
+  - CLI：支持 `desktop/fs/ocr/sys` 分组内的全部现存 Tools 命令映射（通过 DI 调用 `Windows.Agent.Tools.*`，而非直接调用 Service）。
+  - 新增 CLI 调度单测工程：`src/Windows.Agent.Cli.Test/Windows.Agent.Cli.Test.csproj`（mock `Windows.Agent.Interface.*`，不做真实桌面操作）。
+  - 为 `Windows.Agent.Test` 测试按副作用加入 xUnit Trait 分类（Desktop/OCR/SystemControl/FileSystem），并补充运行方式文档。
+  - `SystemControl` 测试增加“自动还原”与“禁用并行”策略（音量/静音、亮度、分辨率）。
+  - FileSystem 测试改为使用独立临时目录并在测试结束自动清理（避免写入固定路径、避免残留）。
+  - Phase 3 已执行：移除 MCP Server（删除 `.mcp/server.json`、移除 `ModelContextProtocol` 依赖与 MCP attributes），并移除 `Windows.Agent` 内嵌 Legacy CLI 入口。
+  - 发布入口收敛：`Windows.Agent.Cli` 已配置为 dotnet tool（`PackAsTool` + `ToolCommandName=windows-agent`）。
+  - 命名统一：已将 `Tools.*` 与 OCR 工具统一到 `Windows.Agent.Tools.*` 命名空间。
+  - 验证：
+    - `dotnet build -c Release`（有 warning，0 errors）
+    - `dotnet test src/Windows.Agent.Cli.Test/Windows.Agent.Cli.Test.csproj -c Release`
+    - `dotnet test src/Windows.Agent.Test/Windows.Agent.Test.csproj -c Release --filter "Category=FileSystem"`
+- 下一步：
+  - Phase 2：补齐“高危命令开关/策略层”（例如 `--dangerous`），并将更多命令映射覆盖到单测中。
+
+## 风险
+
+- 命令名与包名已切换为 `windows-agent` / `Windows.Agent`；旧脚本若使用 `windows-mcp` / `WindowsMCP.Net` 需要同步更新。
+
+## 下一步行动
+
+- 继续按 `docs/plan/2026-02-02-cli-wrapper-plan.md` 推进 Phase 2（安全策略 + 单测覆盖）。

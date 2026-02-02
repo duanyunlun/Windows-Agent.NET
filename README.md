@@ -1,8 +1,8 @@
-# Windows MCP.Net
+# Windows Agent.Net
 
 [English](README.en.md) | **中文**
 
-一个基于 .NET 的 Windows 桌面自动化 MCP (Model Context Protocol) 服务器，为 AI 助手提供与 Windows 桌面环境交互的能力。
+一个基于 .NET 的 Windows 桌面自动化 **CLI 工具集**，更适合让大模型通过 shell “单次调用、拿结果、退出”。（本仓库已不再提供 MCP Server）
 
 ## 📋 目录
 
@@ -26,83 +26,48 @@
 
 **重要提示**: 本项目需要 .NET 10 才能运行，请先确保你的本地安装了 .NET 10。如果尚未安装，请访问 [.NET 10 下载页面](https://dotnet.microsoft.com/zh-cn/download/dotnet/10.0) 进行下载和安装。
 
-### 1. MCP 客户端配置
-
-在您的 MCP 客户端配置中添加以下配置：
-
-#### 使用全局安装的工具（推荐）
-```json
-{
-    "mcpServers": {
-     "WindowsMCP.Net": {
-      "type": "stdio",
-      "command": "dnx",
-      "args": ["WindowsMCP.Net@", "--yes"],
-      "env": {}
-    }
-    }
-}
-```
-
-#### 使用项目源码直接运行（开发模式）
-
-**方式一：工作区配置**
-
-在项目根目录创建 `.vscode/mcp.json` 文件：
-```json
-{
-  "mcpServers": {
-    "Windows-MCP.Net-Dev": {
-      "type": "stdio",
-      "command": "dotnet",
-      "args": ["run", "--project", "src/Windows-MCP.Net.csproj"],
-      "cwd": "${workspaceFolder}",
-      "env": {}
-    }
-  }
-}
-```
-
-**方式二：用户配置**
-
-通过VS Code命令面板运行 `MCP: Open User Configuration`，添加：
-```json
-{
-  "mcpServers": {
-    "Windows-MCP.Net-Local": {
-      "type": "stdio",
-      "command": "dotnet",
-      "args": ["run", "--project", "src/Windows-MCP.Net.csproj"],
-      "env": {}
-    }
-  }
-}
-```
-
-> **注意**: 使用项目源码方式便于开发调试，修改代码后无需重新安装即可生效。VS Code 1.102+ 版本支持MCP服务器的自动发现和管理。
-
-### 2. 安装和运行
+### 1. 安装和运行
 
 #### 方式一：全局安装（推荐）
 ```bash
-dotnet tool install --global WindowsMCP.Net
+dotnet tool install --global Windows.Agent.Cli
+
+# 查看帮助
+windows-agent help
 ```
 
 #### 方式二：从源码运行
 ```bash
 # 克隆仓库
-git clone https://github.com/AIDotNet/Windows-MCP.Net.git
-cd Windows-MCP.Net
+git clone https://github.com/AIDotNet/Windows.Agent.git
+cd Windows.Agent
 
 # 构建项目
 dotnet build
 
-# 运行项目
-dotnet run --project src/Windows-MCP.Net.csproj
+# 运行 CLI（开发模式）
+dotnet run --project src/Windows.Agent.Cli/Windows.Agent.Cli.csproj -- help
 ```
 
-### 3. 开始使用
-配置完成后，重启您的MCP客户端，即可开始使用Windows桌面自动化功能！
+### 2. CLI 模式（命令示例）
+
+CLI 默认输出 JSON 到 stdout：
+
+```bash
+# 查看帮助
+dotnet run --project src/Windows.Agent.Cli/Windows.Agent.Cli.csproj -- help
+
+# 获取桌面状态（不做任何桌面操作）
+dotnet run --project src/Windows.Agent.Cli/Windows.Agent.Cli.csproj -- desktop state --pretty
+
+# 鼠标点击
+dotnet run --project src/Windows.Agent.Cli/Windows.Agent.Cli.csproj -- desktop click --x 100 --y 200 --button left --clicks 1
+
+# 读取文件
+dotnet run --project src/Windows.Agent.Cli/Windows.Agent.Cli.csproj -- fs read --path \"C:\\\\temp\\\\a.txt\"
+```
+
+> 说明：CLI 内部调用现存 `Windows.Agent.Tools.*` 类（而不是直接调用 Service），便于复用工具层参数与行为。
 
 ## 🚀 功能特性
 
@@ -268,9 +233,7 @@ dotnet run --project src/Windows-MCP.Net.csproj
 ## 🛠️ 技术栈
 
 - **.NET 10.0**: 基于最新的 .NET 框架
-- **Model Context Protocol**: 使用 MCP 协议进行通信
 - **Microsoft.Extensions.Hosting**: 应用程序托管框架
-- **Serilog**: 结构化日志记录
 - **HtmlAgilityPack**: HTML 解析和网页抓取
 - **ReverseMarkdown**: HTML 到 Markdown 转换
 
@@ -278,9 +241,9 @@ dotnet run --project src/Windows-MCP.Net.csproj
 
 ```
 src/
-├── Windows-MCP.Net/         # 主项目
-│   ├── .mcp/                # MCP 服务器配置
-│   │   └── server.json      # 服务器配置文件
+├── Windows.Agent.Cli/         # CLI 入口工程（对外入口）
+├── Windows.Agent.Cli.Test/    # CLI 调度单测（mock，无桌面副作用）
+├── Windows.Agent/         # 能力库（Services + Tools）
 │   ├── Exceptions/          # 自定义异常类（待扩展）
 │   ├── Interface/           # 服务接口定义
 │   │   ├── IDesktopService.cs   # 桌面服务接口
@@ -292,7 +255,7 @@ src/
 │   │   ├── DesktopService.cs    # 桌面操作服务
 │   │   ├── FileSystemService.cs # 文件系统服务
 │   │   └── OcrService.cs        # OCR服务
-│   ├── Tools/               # MCP 工具实现
+│   ├── Tools/               # 工具实现（供 CLI 调用）
 │   │   ├── Desktop/             # 桌面操作工具
 │   │   │   ├── ClickTool.cs         # 点击工具
 │   │   │   ├── ClipboardTool.cs     # 剪贴板工具
@@ -330,15 +293,14 @@ src/
 │   │       ├── ExtractTextFromScreenTool.cs # 屏幕文本提取工具
 │   │       ├── FindTextOnScreenTool.cs      # 屏幕文本查找工具
 │   │       └── GetTextCoordinatesTool.cs    # 文本坐标获取工具
-│   ├── Program.cs           # 程序入口点
-│   └── Windows-MCP.Net.csproj   # 项目文件
-└── Windows-MCP.Net.Test/    # 测试项目
+│   └── Windows.Agent.csproj   # 项目文件
+└── Windows.Agent.Test/    # 测试项目
     ├── DesktopToolsExtendedTest.cs  # 桌面工具扩展测试
     ├── FileSystemToolsExtendedTest.cs # 文件系统工具扩展测试
     ├── OCRToolsExtendedTest.cs      # OCR工具扩展测试
     ├── ToolTest.cs                  # 工具基础测试
     ├── UIElementToolTest.cs         # UI元素工具测试
-    └── Windows-MCP.Net.Test.csproj  # 测试项目文件
+    └── Windows.Agent.Test.csproj  # 测试项目文件
 ```
 
 ## 🚧 功能扩展建议
@@ -400,11 +362,7 @@ src/
 
 ### 日志配置
 
-项目使用 Serilog 进行日志记录，日志文件保存在 `logs/` 目录下：
-
-- 控制台输出：实时日志显示
-- 文件输出：按天滚动，保留 31 天
-- 日志级别：Debug 及以上
+CLI 结果输出走 stdout；日志/诊断输出走 stderr（避免污染 stdout 的 JSON 结果）。
 
 ### 环境变量
 
@@ -418,7 +376,6 @@ src/
 
 ## 🔗 相关链接
 
-- [Model Context Protocol](https://modelcontextprotocol.io/)
 - [.NET 文档](https://docs.microsoft.com/dotnet/)
 - [Windows API 文档](https://docs.microsoft.com/windows/win32/)
 
@@ -430,8 +387,8 @@ src/
 
 1. **克隆仓库**
    ```bash
-   git clone https://github.com/AIDotNet/Windows-MCP.Net.git
-   cd Windows-MCP.Net
+   git clone https://github.com/AIDotNet/Windows.Agent.git
+   cd Windows.Agent
    ```
 
 2. **安装依赖**
@@ -476,10 +433,10 @@ src/
 
 如果您遇到问题或有建议，请：
 
-1. 查看 [Issues](https://github.com/xuzeyu91/Windows-MCP.Net/issues)
+1. 查看 [Issues](https://github.com/xuzeyu91/Windows.Agent/issues)
 2. 创建新的 Issue
 3. 参与讨论
-4. 查看 [Wiki](https://github.com/xuzeyu91/Windows-MCP.Net/wiki) 获取更多帮助
+4. 查看 [Wiki](https://github.com/xuzeyu91/Windows.Agent/wiki) 获取更多帮助
 ---
 
 **注意**: 本工具需要适当的 Windows 权限来执行桌面自动化操作。请确保在受信任的环境中使用。

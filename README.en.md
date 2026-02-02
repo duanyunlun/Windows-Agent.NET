@@ -1,8 +1,8 @@
-# Windows MCP.Net
+# Windows Agent.Net
 
 **English** | [中文](README.md)
 
-A .NET-based Windows desktop automation MCP (Model Context Protocol) server that provides AI assistants with the ability to interact with the Windows desktop environment.
+A .NET-based Windows desktop automation **CLI toolkit** for LLMs to call via shell tools. (This repository no longer provides an MCP server.)
 
 ## 📋 Table of Contents
 
@@ -27,83 +27,47 @@ A .NET-based Windows desktop automation MCP (Model Context Protocol) server that
 
 **Important Note**: This project requires .NET 10 to run. Please ensure you have .NET 10 installed locally. If not installed, please visit the [.NET 10 Download Page](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) to download and install.
 
-### 1. MCP Client Configuration
-
-Add the following configuration to your MCP client:
-
-#### Using Global Installed Tool (Recommended)
-```json
-{
-    "mcpServers": {
-     "WindowsMCP.Net": {
-      "type": "stdio",
-      "command": "dnx",
-      "args": ["WindowsMCP.Net@", "--yes"],
-      "env": {}
-    }
-    }
-}
-```
-
-#### Using Project Source Code Direct Run (Development Mode)
-
-**Method 1: Workspace Configuration**
-
-Create `.vscode/mcp.json` file in project root:
-```json
-{
-  "mcpServers": {
-    "Windows-MCP.Net-Dev": {
-      "type": "stdio",
-      "command": "dotnet",
-      "args": ["run", "--project", "src/Windows-MCP.Net.csproj"],
-      "cwd": "${workspaceFolder}",
-      "env": {}
-    }
-  }
-}
-```
-
-**Method 2: User Configuration**
-
-Run `MCP: Open User Configuration` through VS Code command palette, add:
-```json
-{
-  "mcpServers": {
-    "Windows-MCP.Net-Local": {
-      "type": "stdio",
-      "command": "dotnet",
-      "args": ["run", "--project", "src/Windows-MCP.Net.csproj"],
-      "env": {}
-    }
-  }
-}
-```
-
-> **Note**: Using project source code method is convenient for development and debugging. Changes take effect without reinstallation. VS Code 1.102+ supports automatic discovery and management of MCP servers.
-
-### 2. Installation and Running
+### 1. Installation and Running
 
 #### Method 1: Global Installation (Recommended)
 ```bash
-dotnet tool install --global WindowsMCP.Net
+dotnet tool install --global Windows.Agent.Cli
+
+# Help
+windows-agent help
 ```
 
 #### Method 2: Run from Source
 ```bash
 # Clone repository
-git clone https://github.com/AIDotNet/Windows-MCP.Net.git
-cd Windows-MCP.Net
+git clone https://github.com/AIDotNet/Windows.Agent.git
+cd Windows.Agent
 
 # Build project
 dotnet build
 
-# Run project
-dotnet run --project src/Windows-MCP.Net.csproj
+# Run CLI (dev mode)
+dotnet run --project src/Windows.Agent.Cli/Windows.Agent.Cli.csproj -- help
 ```
 
-### 3. Getting Started
-After configuration is complete, restart your MCP client to start using Windows desktop automation features!
+### 2. CLI Mode (Examples)
+CLI outputs JSON to stdout by default:
+
+```bash
+# Help
+dotnet run --project src/Windows.Agent.Cli/Windows.Agent.Cli.csproj -- help
+
+# Desktop state (no desktop interaction)
+dotnet run --project src/Windows.Agent.Cli/Windows.Agent.Cli.csproj -- desktop state --pretty
+
+# Mouse click
+dotnet run --project src/Windows.Agent.Cli/Windows.Agent.Cli.csproj -- desktop click --x 100 --y 200 --button left --clicks 1
+
+# Read a file
+dotnet run --project src/Windows.Agent.Cli/Windows.Agent.Cli.csproj -- fs read --path \"C:\\\\temp\\\\a.txt\"
+```
+
+> Note: The CLI calls existing `Windows.Agent.Tools.*` classes (instead of calling Services directly) to reuse tool-level behavior and parameters.
 
 ## 🚀 Features
 
@@ -286,9 +250,7 @@ Complete desktop automation operation demonstration:
 ## 🛠️ Tech Stack
 
 - **.NET 10.0**: Based on the latest .NET framework
-- **Model Context Protocol**: Uses MCP protocol for communication
 - **Microsoft.Extensions.Hosting**: Application hosting framework
-- **Serilog**: Structured logging
 - **HtmlAgilityPack**: HTML parsing and web scraping
 - **ReverseMarkdown**: HTML to Markdown conversion
 
@@ -351,9 +313,9 @@ Complete desktop automation operation demonstration:
 
 ```
 src/
-├── Windows-MCP.Net/         # Main project
-│   ├── .mcp/                # MCP server configuration
-│   │   └── server.json      # Server configuration file
+├── Windows.Agent.Cli/         # CLI entry (public entrypoint)
+├── Windows.Agent.Cli.Test/    # CLI dispatcher unit tests (mock, no desktop side effects)
+├── Windows.Agent/         # Capability library (Services + Tools)
 │   ├── Exceptions/          # Custom exception classes (to be extended)
 │   ├── Interface/           # Service interface definitions
 │   │   ├── IDesktopService.cs   # Desktop service interface
@@ -365,7 +327,7 @@ src/
 │   │   ├── DesktopService.cs    # Desktop operation service
 │   │   ├── FileSystemService.cs # File system service
 │   │   └── OcrService.cs        # OCR service
-│   ├── Tools/               # MCP tool implementations
+│   ├── Tools/               # Tools (called by CLI)
 │   │   ├── Desktop/             # Desktop operation tools
 │   │   │   ├── ClickTool.cs         # Click tool
 │   │   │   ├── ClipboardTool.cs     # Clipboard tool
@@ -403,15 +365,14 @@ src/
 │   │       ├── ExtractTextFromScreenTool.cs # Screen text extraction tool
 │   │       ├── FindTextOnScreenTool.cs      # Screen text search tool
 │   │       └── GetTextCoordinatesTool.cs    # Text coordinate tool
-│   ├── Program.cs           # Program entry point
-│   └── Windows-MCP.Net.csproj   # Project file
-└── Windows-MCP.Net.Test/    # Test project
+│   └── Windows.Agent.csproj   # Project file
+└── Windows.Agent.Test/    # Test project
     ├── DesktopToolsExtendedTest.cs  # Desktop tools extended test
     ├── FileSystemToolsExtendedTest.cs # File system tools extended test
     ├── OCRToolsExtendedTest.cs      # OCR tools extended test
     ├── ToolTest.cs                  # Tool basic test
     ├── UIElementToolTest.cs         # UI element tool test
-    └── Windows-MCP.Net.Test.csproj  # Test project file
+    └── Windows.Agent.Test.csproj  # Test project file
 ```
 
 ## 📦 Installation
@@ -426,97 +387,44 @@ src/
 
 ```bash
 # Clone repository
-git clone https://github.com/AIDotNet/Windows-MCP.Net.git
-cd Windows-MCP.Net/src
+git clone https://github.com/AIDotNet/Windows.Agent.git
+cd Windows.Agent
 
 # Build project
 dotnet build
 
-# Run project
-dotnet run
+# Run CLI (dev mode)
+dotnet run --project src/Windows.Agent.Cli/Windows.Agent.Cli.csproj -- help
 ```
 
 ### NuGet Package Installation
 
 ```bash
-dotnet tool install --global WindowsMCP.Net
+dotnet tool install --global Windows.Agent.Cli
 ```
 
 ## 🚀 Usage
-
-### Run as MCP Server
+### CLI (installed)
 
 ```bash
-# Direct run
-dotnet run --project src/Windows-MCP.Net.csproj
-
-# Or use installed tool
-windows-mcp-net
+windows-agent help
+windows-agent desktop state --pretty
 ```
 
-### MCP Client Configuration
+### CLI (dev mode)
 
-Add the following configuration to your MCP client:
-
-#### Using Global Installed Tool (Recommended)
-```json
-{
-    "mcpServers": {
-     "WindowsMCP.Net": {
-      "type": "stdio",
-      "command": "dnx",
-      "args": ["WindowsMCP.Net@", "--yes"],
-      "env": {}
-    }
-    }
-}
+```bash
+dotnet run --project src/Windows.Agent.Cli/Windows.Agent.Cli.csproj -- help
 ```
-
-#### Using Project Source Code Direct Run (Development Mode)
-
-**Method 1: Workspace Configuration**
-
-Create `.vscode/mcp.json` file in project root:
-```json
-{
-  "mcpServers": {
-    "WindowsMCP.Net-Dev": {
-      "type": "stdio",
-      "command": "dotnet",
-      "args": ["run", "--project", "src/Windows-MCP.Net.csproj"],
-      "cwd": "${workspaceFolder}",
-      "env": {}
-    }
-  }
-}
-```
-
-**Method 2: User Configuration**
-
-Run `MCP: Open User Configuration` through VS Code command palette, add:
-```json
-{
-  "mcpServers": {
-    "WindowsMCP.Net-Local": {
-      "type": "stdio",
-      "command": "dotnet",
-      "args": ["run", "--project", "src/Windows-MCP.Net.csproj"],
-      "env": {}
-    }
-  }
-}
-```
-
-> **Note**: Using project source code method is convenient for development and debugging. Changes take effect without reinstallation. VS Code 1.102+ supports automatic discovery and management of MCP servers.
 
 
 ## 🏗️ Project Structure
 
 ```
 src/
-├── Windows-MCP.Net/         # Main project
-│   ├── .mcp/                # MCP server configuration
-│   │   └── server.json      # Server configuration file
+├── Windows.Agent.Cli/         # CLI entry (public entrypoint)
+├── Windows.Agent.Cli.Test/    # CLI dispatcher unit tests (mock, no desktop side effects)
+├── Windows.Agent/         # Capability library (Services + Tools)
 │   ├── Exceptions/          # Custom exception classes (to be extended)
 │   ├── Interface/           # Service interface definitions
 │   │   ├── IDesktopService.cs   # Desktop service interface
@@ -528,7 +436,7 @@ src/
 │   │   ├── DesktopService.cs    # Desktop operation service
 │   │   ├── FileSystemService.cs # File system service
 │   │   └── OcrService.cs        # OCR service
-│   ├── Tools/               # MCP tool implementations
+│   ├── Tools/               # Tools (called by CLI)
 │   │   ├── Desktop/             # Desktop operation tools
 │   │   │   ├── ClickTool.cs         # Click tool
 │   │   │   ├── ClipboardTool.cs     # Clipboard tool
@@ -566,26 +474,21 @@ src/
 │   │       ├── ExtractTextFromScreenTool.cs # Screen text extraction tool
 │   │       ├── FindTextOnScreenTool.cs      # Screen text finding tool
 │   │       └── GetTextCoordinatesTool.cs    # Text coordinates tool
-│   ├── Program.cs           # Program entry point
-│   └── Windows-MCP.Net.csproj   # Project file
-└── Windows-MCP.Net.Test/    # Test project
+│   └── Windows.Agent.csproj   # Project file
+└── Windows.Agent.Test/    # Test project
     ├── DesktopToolsExtendedTest.cs  # Desktop tools extended tests
     ├── FileSystemToolsExtendedTest.cs # File system tools extended tests
     ├── OCRToolsExtendedTest.cs      # OCR tools extended tests
     ├── ToolTest.cs                  # Basic tool tests
     ├── UIElementToolTest.cs         # UI element tool tests
-    └── Windows-MCP.Net.Test.csproj  # Test project file
+    └── Windows.Agent.Test.csproj  # Test project file
 ```
 
 ## 🔧 Configuration
 
 ### Logging Configuration
 
-The project uses Serilog for logging, with log files saved in the `logs/` directory:
-
-- Console output: Real-time log display
-- File output: Daily rolling, retain 31 days
-- Log level: Debug and above
+CLI results go to stdout; logs/diagnostics go to stderr (so stdout JSON stays clean).
 
 ### Environment Variables
 
@@ -599,7 +502,6 @@ This project is open source under the MIT License. See the [LICENSE](LICENSE) fi
 
 ## 🔗 Related Links
 
-- [Model Context Protocol](https://modelcontextprotocol.io/)
 - [.NET Documentation](https://docs.microsoft.com/dotnet/)
 - [Windows API Documentation](https://docs.microsoft.com/windows/win32/)
 
@@ -611,8 +513,8 @@ We welcome community contributions! If you want to contribute to the project, pl
 
 1. **Clone Repository**
    ```bash
-   git clone https://github.com/AIDotNet/Windows-MCP.Net.git
-   cd Windows-MCP.Net
+   git clone https://github.com/AIDotNet/Windows.Agent.git
+   cd Windows.Agent
    ```
 
 2. **Install Dependencies**
@@ -657,10 +559,10 @@ When reporting issues, please provide:
 
 If you encounter issues or have suggestions, please:
 
-1. Check [Issues](https://github.com/xuzeyu91/Windows-MCP.Net/issues)
+1. Check [Issues](https://github.com/xuzeyu91/Windows.Agent/issues)
 2. Create a new Issue
 3. Participate in discussions
-4. Check [Wiki](https://github.com/xuzeyu91/Windows-MCP.Net/wiki) for more help
+4. Check [Wiki](https://github.com/xuzeyu91/Windows.Agent/wiki) for more help
 
 ---
 

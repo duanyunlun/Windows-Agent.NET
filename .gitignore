@@ -54,3 +54,5 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 /Windows-MCP
+/_cache/
+/src/_cache/

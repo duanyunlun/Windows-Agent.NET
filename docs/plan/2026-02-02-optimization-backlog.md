@@ -1,0 +1,81 @@
+# 2026-02-02：现有代码可优化清单（Backlog）
+
+## 目标
+
+把现有代码中“确定存在且可落地改进”的点整理为可执行的 backlog，后续按 Phase/优先级逐步完成，并配套测试与验证命令。
+
+> 说明：本清单只写“已在代码/构建输出中看到证据”的问题；不确定项会标注“待确认”和最小验证方式。
+
+## P0（高优先级：安全/稳定/可维护）
+
+### 1) 远程命令/URL 执行风险（注入/转义）
+
+- `DesktopService.OpenBrowserAsync` 使用 `cmd /c start {url}`，未做严谨 quoting/escaping，URL 含 `&` 等字符容易失败，也存在 cmd 注入风险。
+  - 证据：`src/Windows.Agent/Services/DesktopService.cs:1606`
+- `DesktopService.ExecuteCommandAsync` 拼接 `-Command \"{command}\"`，存在引号嵌套与参数注入风险；也缺少超时/取消。
+  - 证据：`src/Windows.Agent/Services/DesktopService.cs:573`
+
+建议：
+- 统一改为 `ProcessStartInfo` + `UseShellExecute` 或参数化/安全转义；并加超时与取消 token。
+- 把“高危能力”（命令执行、文件删除、窗口操作等）加入明确的安全开关策略（例如 CLI 必须显式 `--dangerous`）。
+
+### 2) CLI/自动化调用需要“可控副作用”
+
+- 现有 Desktop 工具会真实点击/输入/拖拽（副作用强），缺少统一的“确认/白名单/沙箱”策略。
+  - 证据：工具均直接调用 `IDesktopService`（例如 `src/Windows.Agent/Tools/Desktop/ClickTool.cs:27`）
+
+建议：
+- 引入“策略层”（Policy）：默认只允许只读操作（state/screenshot/scrape），高危操作需显式开关。
+
+### 3) OCR 初始化与并发/阻塞
+
+- OCR 模型下载使用 `.Result` 阻塞，容易导致死锁/线程池阻塞，并影响首次调用体验。
+  - 证据：`src/Windows.Agent/Services/OcrService.cs:115`
+
+建议：
+- 使用 `await` 全链路异步；把模型初始化封装为 `Lazy<Task<...>>` 并防止并发重复初始化。
+
+## P1（中优先级：工程质量/一致性/可测试）
+
+### 4) CLI 与 Tools/MCP 的职责切分
+
+- 当前仓库已有 CLI 代码，但与“独立 CLI 工程封装并通过 CLI 调用现存 Tools”的目标不一致，需要重构。
+  - 证据：`src/Windows.Agent/Program.cs:38`（`cli` 分支）
+
+建议：
+- 把 CLI 调度抽成独立工程（`Windows.Agent.Cli`），并让 CLI 命令直接调用 `Windows.Agent.Tools.*` 类（而不是 Service）。
+
+### 5) 命名空间不统一导致可发现性/维护成本上升
+
+- 已完成：Tools 的 namespace 已统一为 `Windows.Agent.Tools.*`（包含 OCR）。
+  - 证据：例如 `src/Windows.Agent/Tools/OCR/ExtractTextFromScreenTool.cs:7`
+
+建议：
+- 若后续需要兼容旧命名/旧程序集名，可考虑提供过渡层（类型转发或兼容别名），并同步更新文档与示例。
+
+### 6) “看似单测”实为真实桌面操作（不可控）
+
+- 测试中直接 new `DesktopService` 并执行点击/输入等，容易在 CI/开发机造成副作用，且结果不可预测。
+  - 证据：`src/Windows.Agent.Test/Desktop/ClickToolTest.cs:23`
+
+建议：
+- 将 Tool 层测试改为 mock `IDesktopService` 的纯单测；把真实桌面交互改为可选 Integration Test（默认跳过）。
+
+## P2（低优先级：体验/性能/扩展）
+
+### 7) 桌面状态 StateTool 内容偏占位
+
+- `GetDesktopStateAsync` 输出的“可交互元素/可滚动元素”目前是固定文字占位。
+  - 证据：`src/Windows.Agent/Services/DesktopService.cs:604`
+
+建议：
+- 逐步引入 UIA（Windows UI Automation）实现控件树快照，增强 state 输出的可操作性。
+
+## 待确认项（推测/待确认）
+
+- 日志：当前 Serilog 初始化但 Host 未接入，可能无法统一落盘（待确认）。
+  - 最小验证：运行 MCP/CLI 触发 `ILogger<T>` 输出后检查 `logs/winmcplog-*.txt` 是否包含对应日志。
+
+## 下一步
+
+- 将本 backlog 转换为 Phase 级路线图并逐项执行（见 `docs/plan/2026-02-02-roadmap-phases.md`）。
