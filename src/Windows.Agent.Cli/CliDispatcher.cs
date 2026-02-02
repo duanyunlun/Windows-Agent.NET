@@ -122,7 +122,7 @@ System：
   sys resolution --type high|medium|low
 
 说明：
-  CLI 内部调用现存 Tools.* 类（而不是直接调用 Service）。
+  CLI 内部调用现存 Windows.Agent.Tools.* 类（而不是直接调用 Service）。
 ");
     }
 
