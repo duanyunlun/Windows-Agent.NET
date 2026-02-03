@@ -143,10 +143,10 @@ Desktop：
   desktop ui-find --type text|className|automationId --value <string>
   desktop ui-props --x <int> --y <int>
   desktop ui-wait --type text|className|automationId --value <string> [--timeoutMs <int>]
-  desktop uia-tree --window <titleRegex> [--depth <int>]
-  desktop uia-find --window <titleRegex> --selector <string> [--limit <int>]
-  desktop uia-invoke --window <titleRegex> --selector <string>
-  desktop uia-setvalue --window <titleRegex> --selector <string> --value <string>
+  desktop uia-tree --window <titleRegex> [--depth <int>] [--backend uia3|uia2]
+  desktop uia-find --window <titleRegex> --selector <string> [--limit <int>] [--backend uia3|uia2]
+  desktop uia-invoke --window <titleRegex> --selector <string> [--backend uia3|uia2]
+  desktop uia-setvalue --window <titleRegex> --selector <string> --value <string> [--backend uia3|uia2]
 
 FileSystem：
   fs read --path <string>
@@ -452,7 +452,8 @@ Diag：
                 var tool = services.GetRequiredService<UiaTool>();
                 var window = options.RequireString("window");
                 var depth = options.GetInt("depth", 3);
-                var raw = await tool.GetTreeAsync(window, depth);
+                var backend = options.GetString("backend", "uia3") ?? "uia3";
+                var raw = await tool.GetTreeAsync(window, depth, backend);
                 return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.UiaTool.GetTreeAsync", raw, services, output);
             }
             case "uia-find":
@@ -461,7 +462,8 @@ Diag：
                 var window = options.RequireString("window");
                 var selector = options.RequireString("selector");
                 var limit = options.GetInt("limit", 5);
-                var raw = await tool.FindAsync(window, selector, limit);
+                var backend = options.GetString("backend", "uia3") ?? "uia3";
+                var raw = await tool.FindAsync(window, selector, limit, backend);
                 return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.UiaTool.FindAsync", raw, services, output);
             }
             case "uia-invoke":
@@ -469,7 +471,8 @@ Diag：
                 var tool = services.GetRequiredService<UiaTool>();
                 var window = options.RequireString("window");
                 var selector = options.RequireString("selector");
-                var raw = await tool.InvokeAsync(window, selector);
+                var backend = options.GetString("backend", "uia3") ?? "uia3";
+                var raw = await tool.InvokeAsync(window, selector, backend);
                 return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.UiaTool.InvokeAsync", raw, services, output);
             }
             case "uia-setvalue":
@@ -478,7 +481,8 @@ Diag：
                 var window = options.RequireString("window");
                 var selector = options.RequireString("selector");
                 var value = options.RequireString("value");
-                var raw = await tool.SetValueAsync(window, selector, value);
+                var backend = options.GetString("backend", "uia3") ?? "uia3";
+                var raw = await tool.SetValueAsync(window, selector, value, backend);
                 return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.UiaTool.SetValueAsync", raw, services, output);
             }
             default:

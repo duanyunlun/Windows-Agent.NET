@@ -22,57 +22,60 @@ public class UiaTool
     [Description("Dump UIA element tree for a matched window")]
     public async Task<string> GetTreeAsync(
         [Description("Regex to match the target window title")] string windowTitleRegex,
-        [Description("Max depth of the element tree")] int depth = 3)
+        [Description("Max depth of the element tree")] int depth = 3,
+        [Description("UIA backend: uia3 (default) or uia2")] string backend = "uia3")
     {
-        _logger.LogInformation("UIA tree: windowTitleRegex={WindowTitleRegex}, depth={Depth}", windowTitleRegex, depth);
-        return await _uiaService.GetTreeAsync(windowTitleRegex, depth);
+        _logger.LogInformation("UIA tree: backend={Backend}, windowTitleRegex={WindowTitleRegex}, depth={Depth}", backend, windowTitleRegex, depth);
+        return await _uiaService.GetTreeAsync(windowTitleRegex, depth, backend);
     }
 
     [Description("Find UIA element by selector in a matched window")]
     public async Task<string> FindAsync(
         [Description("Regex to match the target window title")] string windowTitleRegex,
         [Description("Selector (key=value;...) e.g. automationId=btnSend;controlType=Button")] string selector,
-        [Description("Max number of matches to return")] int limit = 5)
+        [Description("Max number of matches to return")] int limit = 5,
+        [Description("UIA backend: uia3 (default) or uia2")] string backend = "uia3")
     {
-        _logger.LogInformation("UIA find: windowTitleRegex={WindowTitleRegex}, selector={Selector}", windowTitleRegex, selector);
+        _logger.LogInformation("UIA find: backend={Backend}, windowTitleRegex={WindowTitleRegex}, selector={Selector}", backend, windowTitleRegex, selector);
 
         if (!UiaSelector.TryParse(selector, out var parsed, out var error) || parsed == null)
         {
             return System.Text.Json.JsonSerializer.Serialize(new { success = false, windowTitleRegex, selector, message = error ?? "invalid selector" }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
         }
 
-        return await _uiaService.FindAsync(windowTitleRegex, parsed, limit);
+        return await _uiaService.FindAsync(windowTitleRegex, parsed, limit, backend);
     }
 
     [Description("Invoke UIA element by selector in a matched window")]
     public async Task<string> InvokeAsync(
         [Description("Regex to match the target window title")] string windowTitleRegex,
-        [Description("Selector (key=value;...) e.g. automationId=btnSend;controlType=Button")] string selector)
+        [Description("Selector (key=value;...) e.g. automationId=btnSend;controlType=Button")] string selector,
+        [Description("UIA backend: uia3 (default) or uia2")] string backend = "uia3")
     {
-        _logger.LogInformation("UIA invoke: windowTitleRegex={WindowTitleRegex}, selector={Selector}", windowTitleRegex, selector);
+        _logger.LogInformation("UIA invoke: backend={Backend}, windowTitleRegex={WindowTitleRegex}, selector={Selector}", backend, windowTitleRegex, selector);
 
         if (!UiaSelector.TryParse(selector, out var parsed, out var error) || parsed == null)
         {
             return System.Text.Json.JsonSerializer.Serialize(new { success = false, windowTitleRegex, selector, message = error ?? "invalid selector" }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
         }
 
-        return await _uiaService.InvokeAsync(windowTitleRegex, parsed);
+        return await _uiaService.InvokeAsync(windowTitleRegex, parsed, backend);
     }
 
     [Description("Set value on UIA element by selector in a matched window")]
     public async Task<string> SetValueAsync(
         [Description("Regex to match the target window title")] string windowTitleRegex,
         [Description("Selector (key=value;...) e.g. automationId=txtUser;controlType=Edit")] string selector,
-        [Description("Value to set")] string value)
+        [Description("Value to set")] string value,
+        [Description("UIA backend: uia3 (default) or uia2")] string backend = "uia3")
     {
-        _logger.LogInformation("UIA setvalue: windowTitleRegex={WindowTitleRegex}, selector={Selector}", windowTitleRegex, selector);
+        _logger.LogInformation("UIA setvalue: backend={Backend}, windowTitleRegex={WindowTitleRegex}, selector={Selector}", backend, windowTitleRegex, selector);
 
         if (!UiaSelector.TryParse(selector, out var parsed, out var error) || parsed == null)
         {
             return System.Text.Json.JsonSerializer.Serialize(new { success = false, windowTitleRegex, selector, message = error ?? "invalid selector" }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
         }
 
-        return await _uiaService.SetValueAsync(windowTitleRegex, parsed, value);
+        return await _uiaService.SetValueAsync(windowTitleRegex, parsed, value, backend);
     }
 }
-

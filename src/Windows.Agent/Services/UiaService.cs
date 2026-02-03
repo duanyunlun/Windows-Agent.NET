@@ -4,6 +4,7 @@ using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Conditions;
 using FlaUI.Core.Definitions;
+using FlaUI.UIA2;
 using FlaUI.UIA3;
 using Microsoft.Extensions.Logging;
 using Windows.Agent.Interface;
@@ -21,19 +22,19 @@ public sealed class UiaService : IUiaService
         _logger = logger;
     }
 
-    public Task<string> GetTreeAsync(string windowTitleRegex, int depth = 3)
-        => RunStaAsync(() => GetTreeCore(windowTitleRegex, depth));
+    public Task<string> GetTreeAsync(string windowTitleRegex, int depth = 3, string backend = "uia3")
+        => RunStaAsync(() => GetTreeCore(windowTitleRegex, depth, backend));
 
-    public Task<string> FindAsync(string windowTitleRegex, UiaSelector selector, int limit = 5)
-        => RunStaAsync(() => FindCore(windowTitleRegex, selector, limit));
+    public Task<string> FindAsync(string windowTitleRegex, UiaSelector selector, int limit = 5, string backend = "uia3")
+        => RunStaAsync(() => FindCore(windowTitleRegex, selector, limit, backend));
 
-    public Task<string> InvokeAsync(string windowTitleRegex, UiaSelector selector)
-        => RunStaAsync(() => InvokeCore(windowTitleRegex, selector));
+    public Task<string> InvokeAsync(string windowTitleRegex, UiaSelector selector, string backend = "uia3")
+        => RunStaAsync(() => InvokeCore(windowTitleRegex, selector, backend));
 
-    public Task<string> SetValueAsync(string windowTitleRegex, UiaSelector selector, string value)
-        => RunStaAsync(() => SetValueCore(windowTitleRegex, selector, value));
+    public Task<string> SetValueAsync(string windowTitleRegex, UiaSelector selector, string value, string backend = "uia3")
+        => RunStaAsync(() => SetValueCore(windowTitleRegex, selector, value, backend));
 
-    private string GetTreeCore(string windowTitleRegex, int depth)
+    private string GetTreeCore(string windowTitleRegex, int depth, string backend)
     {
         if (string.IsNullOrWhiteSpace(windowTitleRegex))
         {
@@ -48,32 +49,40 @@ public sealed class UiaService : IUiaService
         try
         {
             var regex = CompileTitleRegex(windowTitleRegex);
-            using var automation = new UIA3Automation();
-            var (window, matches, matchError) = FindUniqueWindow(automation, regex);
+            if (!TryCreateAutomation(backend, out var automation, out var backendError))
+            {
+                return JsonSerializer.Serialize(new { success = false, backend, message = backendError }, JsonOptions);
+            }
+
+            using (automation)
+            {
+                var (window, matches, matchError) = FindUniqueWindow(automation, regex);
             if (window == null)
             {
-                return JsonSerializer.Serialize(new { success = false, message = matchError, matches }, JsonOptions);
+                    return JsonSerializer.Serialize(new { success = false, backend, message = matchError, matches }, JsonOptions);
             }
 
             var node = BuildNode(window, depth, maxChildrenPerNode: 80);
             var payload = new
             {
                 success = true,
+                backend,
                 windowTitleRegex,
                 depth,
                 window = ToElementInfo(window),
                 tree = node
             };
             return JsonSerializer.Serialize(payload, JsonOptions);
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to build UIA tree");
-            return JsonSerializer.Serialize(new { success = false, windowTitleRegex, message = ex.Message }, JsonOptions);
+            return JsonSerializer.Serialize(new { success = false, backend, windowTitleRegex, message = ex.Message }, JsonOptions);
         }
     }
 
-    private string FindCore(string windowTitleRegex, UiaSelector selector, int limit)
+    private string FindCore(string windowTitleRegex, UiaSelector selector, int limit, string backend)
     {
         if (string.IsNullOrWhiteSpace(windowTitleRegex))
         {
@@ -88,17 +97,23 @@ public sealed class UiaService : IUiaService
         try
         {
             var regex = CompileTitleRegex(windowTitleRegex);
-            using var automation = new UIA3Automation();
-            var (window, _, matchError) = FindUniqueWindow(automation, regex);
+            if (!TryCreateAutomation(backend, out var automation, out var backendError))
+            {
+                return JsonSerializer.Serialize(new { success = false, backend, message = backendError }, JsonOptions);
+            }
+
+            using (automation)
+            {
+                var (window, _, matchError) = FindUniqueWindow(automation, regex);
             if (window == null)
             {
-                return JsonSerializer.Serialize(new { success = false, message = matchError }, JsonOptions);
+                    return JsonSerializer.Serialize(new { success = false, backend, message = matchError }, JsonOptions);
             }
 
             var conditionError = TryBuildCondition(selector, out var condition);
             if (conditionError != null || condition == null)
             {
-                return JsonSerializer.Serialize(new { success = false, message = conditionError ?? "invalid selector" }, JsonOptions);
+                    return JsonSerializer.Serialize(new { success = false, backend, message = conditionError ?? "invalid selector" }, JsonOptions);
             }
 
             var elements = window.FindAllDescendants(condition);
@@ -109,6 +124,7 @@ public sealed class UiaService : IUiaService
                 return JsonSerializer.Serialize(new
                 {
                     success = false,
+                    backend,
                     windowTitleRegex,
                     selector,
                     message = "UIA element not found"
@@ -120,6 +136,7 @@ public sealed class UiaService : IUiaService
                 return JsonSerializer.Serialize(new
                 {
                     success = false,
+                    backend,
                     windowTitleRegex,
                     selector,
                     message = $"UIA selector matched {elements.Length} elements (expected exactly 1)",
@@ -131,20 +148,22 @@ public sealed class UiaService : IUiaService
             return JsonSerializer.Serialize(new
             {
                 success = true,
+                backend,
                 windowTitleRegex,
                 selector,
                 matchCount = elements.Length,
                 element = matches[0]
             }, JsonOptions);
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to find UIA element");
-            return JsonSerializer.Serialize(new { success = false, windowTitleRegex, selector, message = ex.Message }, JsonOptions);
+            return JsonSerializer.Serialize(new { success = false, backend, windowTitleRegex, selector, message = ex.Message }, JsonOptions);
         }
     }
 
-    private string InvokeCore(string windowTitleRegex, UiaSelector selector)
+    private string InvokeCore(string windowTitleRegex, UiaSelector selector, string backend)
     {
         if (string.IsNullOrWhiteSpace(windowTitleRegex))
         {
@@ -154,11 +173,17 @@ public sealed class UiaService : IUiaService
         try
         {
             var regex = CompileTitleRegex(windowTitleRegex);
-            using var automation = new UIA3Automation();
-            var (window, _, matchError) = FindUniqueWindow(automation, regex);
+            if (!TryCreateAutomation(backend, out var automation, out var backendError))
+            {
+                return JsonSerializer.Serialize(new { success = false, backend, message = backendError }, JsonOptions);
+            }
+
+            using (automation)
+            {
+                var (window, _, matchError) = FindUniqueWindow(automation, regex);
             if (window == null)
             {
-                return JsonSerializer.Serialize(new { success = false, message = matchError }, JsonOptions);
+                    return JsonSerializer.Serialize(new { success = false, backend, message = matchError }, JsonOptions);
             }
 
             var resolve = ResolveUniqueElement(window, selector);
@@ -167,6 +192,7 @@ public sealed class UiaService : IUiaService
                 return JsonSerializer.Serialize(new
                 {
                     success = false,
+                    backend,
                     windowTitleRegex,
                     selector,
                     message = resolve.Message,
@@ -183,6 +209,7 @@ public sealed class UiaService : IUiaService
                 return JsonSerializer.Serialize(new
                 {
                     success = false,
+                    backend,
                     windowTitleRegex,
                     selector,
                     element = ToElementInfo(resolve.Element),
@@ -195,20 +222,22 @@ public sealed class UiaService : IUiaService
             return JsonSerializer.Serialize(new
             {
                 success = true,
+                backend,
                 windowTitleRegex,
                 selector,
                 element = ToElementInfo(resolve.Element),
                 message = "Invoked"
             }, JsonOptions);
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to invoke UIA element");
-            return JsonSerializer.Serialize(new { success = false, windowTitleRegex, selector, message = ex.Message }, JsonOptions);
+            return JsonSerializer.Serialize(new { success = false, backend, windowTitleRegex, selector, message = ex.Message }, JsonOptions);
         }
     }
 
-    private string SetValueCore(string windowTitleRegex, UiaSelector selector, string value)
+    private string SetValueCore(string windowTitleRegex, UiaSelector selector, string value, string backend)
     {
         if (string.IsNullOrWhiteSpace(windowTitleRegex))
         {
@@ -223,11 +252,17 @@ public sealed class UiaService : IUiaService
         try
         {
             var regex = CompileTitleRegex(windowTitleRegex);
-            using var automation = new UIA3Automation();
-            var (window, _, matchError) = FindUniqueWindow(automation, regex);
+            if (!TryCreateAutomation(backend, out var automation, out var backendError))
+            {
+                return JsonSerializer.Serialize(new { success = false, backend, message = backendError }, JsonOptions);
+            }
+
+            using (automation)
+            {
+                var (window, _, matchError) = FindUniqueWindow(automation, regex);
             if (window == null)
             {
-                return JsonSerializer.Serialize(new { success = false, message = matchError }, JsonOptions);
+                    return JsonSerializer.Serialize(new { success = false, backend, message = matchError }, JsonOptions);
             }
 
             var resolve = ResolveUniqueElement(window, selector);
@@ -236,6 +271,7 @@ public sealed class UiaService : IUiaService
                 return JsonSerializer.Serialize(new
                 {
                     success = false,
+                    backend,
                     windowTitleRegex,
                     selector,
                     message = resolve.Message,
@@ -252,6 +288,7 @@ public sealed class UiaService : IUiaService
                 return JsonSerializer.Serialize(new
                 {
                     success = false,
+                    backend,
                     windowTitleRegex,
                     selector,
                     element = ToElementInfo(resolve.Element),
@@ -264,16 +301,18 @@ public sealed class UiaService : IUiaService
             return JsonSerializer.Serialize(new
             {
                 success = true,
+                backend,
                 windowTitleRegex,
                 selector,
                 element = ToElementInfo(resolve.Element),
                 message = "Value set"
             }, JsonOptions);
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to set value on UIA element");
-            return JsonSerializer.Serialize(new { success = false, windowTitleRegex, selector, message = ex.Message }, JsonOptions);
+            return JsonSerializer.Serialize(new { success = false, backend, windowTitleRegex, selector, message = ex.Message }, JsonOptions);
         }
     }
 
@@ -305,6 +344,28 @@ public sealed class UiaService : IUiaService
         }
 
         return (matches[0], Array.Empty<object>(), null);
+    }
+
+    private static bool TryCreateAutomation(string backend, out AutomationBase automation, out string message)
+    {
+        var normalized = (backend ?? "uia3").Trim().ToLowerInvariant();
+        switch (normalized)
+        {
+            case "uia3":
+            case "3":
+                automation = new UIA3Automation();
+                message = "OK";
+                return true;
+            case "uia2":
+            case "2":
+                automation = new UIA2Automation();
+                message = "OK";
+                return true;
+            default:
+                automation = null!;
+                message = "backend must be uia3 or uia2";
+                return false;
+        }
     }
 
     private static string? TryBuildCondition(UiaSelector selector, out Func<ConditionFactory, ConditionBase>? condition)

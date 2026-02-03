@@ -194,7 +194,7 @@ public class CliDispatcherTests
     {
         var uia = new Mock<IUiaService>(MockBehavior.Strict);
         uia
-            .Setup(s => s.GetTreeAsync("AppA", 2))
+            .Setup(s => s.GetTreeAsync("AppA", 2, "uia3"))
             .ReturnsAsync("{\"success\":true,\"windowTitleRegex\":\"AppA\",\"depth\":2}");
 
         var sp = BuildServiceProvider(services =>
@@ -269,7 +269,8 @@ public class CliDispatcherTests
             .Setup(s => s.FindAsync(
                 "AppA",
                 It.Is<UiaSelector>(sel => sel.AutomationId == "btnSendHttp" && sel.ControlType == "Button"),
-                7))
+                7,
+                "uia3"))
             .ReturnsAsync("{\"success\":true,\"matchCount\":1}");
 
         var sp = BuildServiceProvider(services =>
@@ -301,6 +302,30 @@ public class CliDispatcherTests
         using var doc = JsonDocument.Parse(output.ToString());
         Assert.True(doc.RootElement.GetProperty("success").GetBoolean());
         Assert.Equal("Windows.Agent.Tools.Desktop.UiaTool.FindAsync", doc.RootElement.GetProperty("tool").GetString());
+    }
+
+    [Fact]
+    public async Task DesktopUiaTree_WithBackendUia2_ShouldPassBackendToService()
+    {
+        var uia = new Mock<IUiaService>(MockBehavior.Strict);
+        uia
+            .Setup(s => s.GetTreeAsync("AppA", 1, "uia2"))
+            .ReturnsAsync("{\"success\":true}");
+
+        var sp = BuildServiceProvider(services =>
+        {
+            services.AddSingleton(uia.Object);
+            services.AddTransient<UiaTool>();
+        });
+
+        var output = new StringWriter();
+        var exit = await CliDispatcher.RunAsync(
+            new[] { "desktop", "uia-tree", "--window", "AppA", "--depth", "1", "--backend", "uia2", "--pretty" },
+            sp,
+            output);
+
+        Assert.Equal(0, exit);
+        uia.VerifyAll();
     }
 
     [Fact]
