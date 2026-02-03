@@ -7,7 +7,7 @@ using Windows.Agent.Interface;
 namespace Windows.Agent.Tools.Desktop;
 
 /// <summary>
-/// MCP tool for web scraping.
+/// 网页抓取工具。
 /// </summary>
 public class ScrapeTool
 {

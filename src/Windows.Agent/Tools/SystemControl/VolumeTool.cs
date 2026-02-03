@@ -5,7 +5,7 @@ using Windows.Agent.Interface;
 namespace Windows.Agent.Tools.SystemControl;
 
 /// <summary>
-/// MCP tool for system volume control operations.
+/// 系统音量控制工具。
 /// </summary>
 public class VolumeTool
 {

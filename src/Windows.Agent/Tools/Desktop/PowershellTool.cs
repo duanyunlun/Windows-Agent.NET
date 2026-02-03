@@ -5,7 +5,7 @@ using Windows.Agent.Interface;
 namespace Windows.Agent.Tools.Desktop;
 
 /// <summary>
-/// MCP tool for executing PowerShell commands.
+/// PowerShell 执行工具。
 /// </summary>
 public class PowershellTool
 {

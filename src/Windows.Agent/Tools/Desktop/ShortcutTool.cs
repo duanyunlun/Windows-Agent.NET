@@ -5,7 +5,7 @@ using Windows.Agent.Interface;
 namespace Windows.Agent.Tools.Desktop;
 
 /// <summary>
-/// MCP tool for executing keyboard shortcuts.
+/// 快捷键工具。
 /// </summary>
 public class ShortcutTool
 {

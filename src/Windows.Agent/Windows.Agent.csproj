@@ -35,6 +35,7 @@
     <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.106" />
     <PackageReference Include="System.Management" Version="10.0.0-preview.6.25358.103" />
     <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="YamlDotNet" Version="13.1.1" />
   </ItemGroup>
 
 

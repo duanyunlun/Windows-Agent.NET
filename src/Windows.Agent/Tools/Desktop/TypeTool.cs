@@ -5,7 +5,7 @@ using Windows.Agent.Interface;
 namespace Windows.Agent.Tools.Desktop;
 
 /// <summary>
-/// MCP tool for typing text into input fields.
+/// 文本输入工具。
 /// </summary>
 public class TypeTool
 {

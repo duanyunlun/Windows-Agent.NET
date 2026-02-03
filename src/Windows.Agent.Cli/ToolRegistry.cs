@@ -3,6 +3,8 @@ using Windows.Agent.Tools.Desktop;
 using Windows.Agent.Tools.FileSystem;
 using Windows.Agent.Tools.SystemControl;
 using Windows.Agent.Tools.OCR;
+using Windows.Agent.Tools.Contracts;
+using Windows.Agent.Tools.Diagnostics;
 
 namespace Windows.Agent.Cli;
 
@@ -51,5 +53,8 @@ internal static class ToolRegistry
         services.AddTransient<BrightnessTool>();
         services.AddTransient<VolumeTool>();
         services.AddTransient<ResolutionTool>();
+
+        services.AddTransient<ContractTool>();
+        services.AddTransient<TailLogTool>();
     }
 }

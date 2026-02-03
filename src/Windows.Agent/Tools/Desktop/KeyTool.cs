@@ -5,7 +5,7 @@ using Windows.Agent.Interface;
 namespace Windows.Agent.Tools.Desktop;
 
 /// <summary>
-/// MCP tool for pressing individual keyboard keys.
+/// 键盘按键工具。
 /// </summary>
 public class KeyTool
 {

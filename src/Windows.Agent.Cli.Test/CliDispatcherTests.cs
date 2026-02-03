@@ -7,6 +7,8 @@ using Windows.Agent.Tools.Desktop;
 using Windows.Agent.Tools.FileSystem;
 using Windows.Agent.Tools.OCR;
 using Windows.Agent.Tools.SystemControl;
+using Windows.Agent.Tools.Contracts;
+using Windows.Agent.Tools.Diagnostics;
 
 namespace Windows.Agent.Cli.Test;
 
@@ -36,7 +38,9 @@ public class CliDispatcherTests
         desktop.VerifyAll();
 
         using var doc = JsonDocument.Parse(output.ToString());
+        Assert.Equal("1.0", doc.RootElement.GetProperty("schemaVersion").GetString());
         Assert.True(doc.RootElement.GetProperty("success").GetBoolean());
+        Assert.Equal("OK", doc.RootElement.GetProperty("code").GetString());
         Assert.Equal("Windows.Agent.Tools.Desktop.ClickTool.ClickAsync", doc.RootElement.GetProperty("tool").GetString());
         Assert.Equal("ok", doc.RootElement.GetProperty("result").GetProperty("raw").GetString());
     }
@@ -65,6 +69,7 @@ public class CliDispatcherTests
         fs.VerifyAll();
 
         using var doc = JsonDocument.Parse(output.ToString());
+        Assert.Equal("1.0", doc.RootElement.GetProperty("schemaVersion").GetString());
         Assert.Equal("Windows.Agent.Tools.FileSystem.ReadFileTool.ReadFileAsync", doc.RootElement.GetProperty("tool").GetString());
 
         var parsed = doc.RootElement.GetProperty("result").GetProperty("parsed");
@@ -96,6 +101,7 @@ public class CliDispatcherTests
         ocr.VerifyAll();
 
         using var doc = JsonDocument.Parse(output.ToString());
+        Assert.Equal("1.0", doc.RootElement.GetProperty("schemaVersion").GetString());
         Assert.Equal(
             "Windows.Agent.Tools.OCR.ExtractTextFromScreenTool.ExtractTextFromScreenAsync",
             doc.RootElement.GetProperty("tool").GetString());
@@ -129,6 +135,7 @@ public class CliDispatcherTests
         sys.VerifyAll();
 
         using var doc = JsonDocument.Parse(output.ToString());
+        Assert.Equal("1.0", doc.RootElement.GetProperty("schemaVersion").GetString());
         Assert.Equal("Windows.Agent.Tools.SystemControl.VolumeTool.SetVolumePercentAsync", doc.RootElement.GetProperty("tool").GetString());
         Assert.Equal("done", doc.RootElement.GetProperty("result").GetProperty("raw").GetString());
     }
@@ -157,6 +164,7 @@ public class CliDispatcherTests
         desktop.VerifyAll();
 
         using var doc = JsonDocument.Parse(output.ToString());
+        Assert.Equal("1.0", doc.RootElement.GetProperty("schemaVersion").GetString());
         Assert.Equal("Windows.Agent.Tools.Desktop.ShortcutTool.ShortcutAsync", doc.RootElement.GetProperty("tool").GetString());
         Assert.Equal("ok", doc.RootElement.GetProperty("result").GetProperty("raw").GetString());
     }
@@ -176,7 +184,8 @@ public class CliDispatcherTests
 
         using var doc = JsonDocument.Parse(output.ToString());
         Assert.False(doc.RootElement.GetProperty("success").GetBoolean());
-        Assert.Contains("--dangerous", doc.RootElement.GetProperty("error").GetString());
+        Assert.Equal("POLICY_DENIED", doc.RootElement.GetProperty("code").GetString());
+        Assert.Contains("--dangerous", doc.RootElement.GetProperty("message").GetString());
     }
 
     [Fact]
@@ -194,7 +203,198 @@ public class CliDispatcherTests
 
         using var doc = JsonDocument.Parse(output.ToString());
         Assert.False(doc.RootElement.GetProperty("success").GetBoolean());
-        Assert.Contains("--dangerous", doc.RootElement.GetProperty("error").GetString());
+        Assert.Equal("POLICY_DENIED", doc.RootElement.GetProperty("code").GetString());
+        Assert.Contains("--dangerous", doc.RootElement.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task ContractValidate_WithValidYaml_ShouldExposeParsedJson()
+    {
+        var yaml = """
+                   contractVersion: "1.0.0"
+                   app:
+                     name: "AppA"
+                     processNames: ["AppA.exe"]
+                   windows:
+                     main:
+                       titleContains: "AppA"
+                   controls:
+                     btn_send_http:
+                       windowId: "main"
+                       uia:
+                         automationId: "btnSendHttp"
+                         controlType: "Button"
+                       ocr:
+                         text: "发送"
+                         occurrence: 1
+                       fallbackCoords:
+                         offsetX: 420
+                         offsetY: 180
+                   assertions:
+                     send_http_success:
+                       ocrText: "请求成功"
+                   """;
+
+        var path = Path.Combine(Path.GetTempPath(), $"ui-contract-{Guid.NewGuid():N}.yml");
+        await File.WriteAllTextAsync(path, yaml);
+
+        try
+        {
+            var sp = BuildServiceProvider(services =>
+            {
+                services.AddTransient<ContractTool>();
+            });
+
+            var output = new StringWriter();
+            var exit = await CliDispatcher.RunAsync(
+                new[] { "contract", "validate", "--path", path, "--pretty" },
+                sp,
+                output);
+
+            Assert.Equal(0, exit);
+
+            using var doc = JsonDocument.Parse(output.ToString());
+            Assert.Equal("1.0", doc.RootElement.GetProperty("schemaVersion").GetString());
+            Assert.Equal("Windows.Agent.Tools.Contracts.ContractTool.ValidateAsync", doc.RootElement.GetProperty("tool").GetString());
+
+            var parsed = doc.RootElement.GetProperty("result").GetProperty("parsed");
+            Assert.True(parsed.GetProperty("success").GetBoolean());
+            Assert.Equal("1.0.0", parsed.GetProperty("contractVersion").GetString());
+            Assert.Equal("AppA", parsed.GetProperty("app").GetProperty("name").GetString());
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ContractValidate_WithMissingFields_ShouldExposeErrors()
+    {
+        var yaml = """
+                   contractVersion: ""
+                   app:
+                     name: ""
+                   windows: {}
+                   controls: {}
+                   """;
+
+        var path = Path.Combine(Path.GetTempPath(), $"ui-contract-{Guid.NewGuid():N}.yml");
+        await File.WriteAllTextAsync(path, yaml);
+
+        try
+        {
+            var sp = BuildServiceProvider(services =>
+            {
+                services.AddTransient<ContractTool>();
+            });
+
+            var output = new StringWriter();
+            var exit = await CliDispatcher.RunAsync(
+                new[] { "contract", "validate", "--path", path, "--pretty" },
+                sp,
+                output);
+
+            Assert.Equal(1, exit);
+
+            using var doc = JsonDocument.Parse(output.ToString());
+            var parsed = doc.RootElement.GetProperty("result").GetProperty("parsed");
+            Assert.False(parsed.GetProperty("success").GetBoolean());
+            Assert.True(parsed.GetProperty("errors").GetArrayLength() > 0);
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task SnapshotOnError_WhenToolFails_ShouldEmitSessionAndArtifacts()
+    {
+        var yaml = """
+                   contractVersion: ""
+                   app:
+                     name: ""
+                   windows: {}
+                   controls: {}
+                   """;
+
+        var path = Path.Combine(Path.GetTempPath(), $"ui-contract-{Guid.NewGuid():N}.yml");
+        await File.WriteAllTextAsync(path, yaml);
+
+        try
+        {
+            var sp = BuildServiceProvider(services =>
+            {
+                services.AddTransient<ContractTool>();
+            });
+
+            var output = new StringWriter();
+            var exit = await CliDispatcher.RunAsync(
+                new[] { "contract", "validate", "--path", path, "--snapshot-on-error", "--pretty" },
+                sp,
+                output);
+
+            Assert.Equal(1, exit);
+
+            using var doc = JsonDocument.Parse(output.ToString());
+            Assert.False(doc.RootElement.GetProperty("success").GetBoolean());
+            Assert.False(string.IsNullOrWhiteSpace(doc.RootElement.GetProperty("session").GetString()));
+            Assert.Equal(JsonValueKind.Array, doc.RootElement.GetProperty("artifacts").ValueKind);
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task DiagTailLog_ShouldReturnLastLines()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"wa-tail-{Guid.NewGuid():N}.log");
+        await File.WriteAllLinesAsync(path, Enumerable.Range(1, 10).Select(i => $"line-{i}"));
+
+        try
+        {
+            var sp = BuildServiceProvider(services =>
+            {
+                services.AddTransient<TailLogTool>();
+            });
+
+            var output = new StringWriter();
+            var exit = await CliDispatcher.RunAsync(
+                new[] { "diag", "tail-log", "--path", path, "--lines", "3", "--pretty" },
+                sp,
+                output);
+
+            Assert.Equal(0, exit);
+
+            using var doc = JsonDocument.Parse(output.ToString());
+            Assert.Equal("1.0", doc.RootElement.GetProperty("schemaVersion").GetString());
+            Assert.True(doc.RootElement.GetProperty("success").GetBoolean());
+            Assert.Equal("Windows.Agent.Tools.Diagnostics.TailLogTool.TailAsync", doc.RootElement.GetProperty("tool").GetString());
+
+            var parsed = doc.RootElement.GetProperty("result").GetProperty("parsed");
+            Assert.True(parsed.GetProperty("success").GetBoolean());
+            Assert.Equal(3, parsed.GetProperty("lineCount").GetInt32());
+            Assert.Equal(new[] { "line-8", "line-9", "line-10" }, parsed.GetProperty("lines").EnumerateArray().Select(e => e.GetString()).ToArray());
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
     }
 
     private static ServiceProvider BuildServiceProvider(Action<IServiceCollection> configure)

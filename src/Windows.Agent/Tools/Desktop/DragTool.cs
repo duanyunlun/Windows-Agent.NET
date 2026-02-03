@@ -5,7 +5,7 @@ using Windows.Agent.Interface;
 namespace Windows.Agent.Tools.Desktop;
 
 /// <summary>
-/// MCP tool for drag and drop operations.
+/// 拖拽工具。
 /// </summary>
 public class DragTool
 {

@@ -5,7 +5,7 @@ using Windows.Agent.Interface;
 namespace Windows.Agent.Tools.Desktop;
 
 /// <summary>
-/// MCP tool for switching to application windows.
+/// 应用窗口切换工具。
 /// </summary>
 public class SwitchTool
 {

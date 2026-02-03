@@ -5,7 +5,7 @@ using Windows.Agent.Interface;
 namespace Windows.Agent.Tools.SystemControl;
 
 /// <summary>
-/// MCP tool for screen resolution control operations.
+/// 屏幕分辨率控制工具。
 /// </summary>
 public class ResolutionTool
 {

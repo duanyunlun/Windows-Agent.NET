@@ -5,7 +5,7 @@ using Windows.Agent.Interface;
 namespace Windows.Agent.Tools.Desktop;
 
 /// <summary>
-/// MCP tool for capturing comprehensive desktop state.
+/// 桌面状态采集工具。
 /// </summary>
 public class StateTool
 {

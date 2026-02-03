@@ -5,7 +5,7 @@ using Windows.Agent.Interface;
 namespace Windows.Agent.Tools.Desktop;
 
 /// <summary>
-/// MCP tool for opening URLs in the default browser.
+/// 打开浏览器工具（URL/搜索）。
 /// </summary>
 public class OpenBrowserTool
 {

@@ -5,7 +5,7 @@ using Windows.Agent.Interface;
 namespace Windows.Agent.Tools.Desktop;
 
 /// <summary>
-/// MCP tool for scrolling operations.
+/// 滚动工具。
 /// </summary>
 public class ScrollTool
 {

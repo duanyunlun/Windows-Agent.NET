@@ -5,7 +5,7 @@ using Windows.Agent.Interface;
 namespace Windows.Agent.Tools.SystemControl;
 
 /// <summary>
-/// MCP tool for screen brightness control operations.
+/// 屏幕亮度控制工具。
 /// </summary>
 public class BrightnessTool
 {

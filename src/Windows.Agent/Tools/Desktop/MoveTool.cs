@@ -5,7 +5,7 @@ using Windows.Agent.Interface;
 namespace Windows.Agent.Tools.Desktop;
 
 /// <summary>
-/// MCP tool for moving mouse cursor.
+/// 鼠标移动工具。
 /// </summary>
 public class MoveTool
 {

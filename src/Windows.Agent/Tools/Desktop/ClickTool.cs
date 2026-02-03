@@ -5,7 +5,7 @@ using Windows.Agent.Interface;
 namespace Windows.Agent.Tools.Desktop;
 
 /// <summary>
-/// MCP tool for mouse click operations.
+/// 鼠标点击工具。
 /// </summary>
 public class ClickTool
 {

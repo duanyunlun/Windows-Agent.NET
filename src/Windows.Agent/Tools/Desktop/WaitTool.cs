@@ -5,7 +5,7 @@ using Windows.Agent.Interface;
 namespace Windows.Agent.Tools.Desktop;
 
 /// <summary>
-/// MCP tool for pausing execution.
+/// 等待/延时工具。
 /// </summary>
 public class WaitTool
 {

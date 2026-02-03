@@ -5,7 +5,7 @@ using Windows.Agent.Interface;
 namespace Windows.Agent.Tools.Desktop;
 
 /// <summary>
-/// MCP tool for UI element identification and interaction.
+/// UI 元素定位与属性工具。
 /// Provides methods to find UI elements by various selectors and get element properties.
 /// </summary>
 public class UIElementTool

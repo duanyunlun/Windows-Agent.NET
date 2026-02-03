@@ -5,7 +5,7 @@ using Windows.Agent.Interface;
 namespace Windows.Agent.Tools.Desktop;
 
 /// <summary>
-/// MCP tool for launching applications from the Windows Start Menu.
+/// 启动应用工具（开始菜单）。
 /// </summary>
 public class LaunchTool
 {

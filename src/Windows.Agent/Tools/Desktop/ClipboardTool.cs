@@ -5,7 +5,7 @@ using Windows.Agent.Interface;
 namespace Windows.Agent.Tools.Desktop;
 
 /// <summary>
-/// MCP tool for clipboard operations.
+/// 剪贴板工具。
 /// </summary>
 public class ClipboardTool
 {

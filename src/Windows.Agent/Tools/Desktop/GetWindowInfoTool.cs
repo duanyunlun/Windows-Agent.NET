@@ -5,7 +5,7 @@ using Windows.Agent.Interface;
 namespace Windows.Agent.Tools.Desktop;
 
 /// <summary>
-/// MCP tool for getting window position and size information.
+/// 窗口信息工具（位置/大小）。
 /// </summary>
 public class GetWindowInfoTool
 {

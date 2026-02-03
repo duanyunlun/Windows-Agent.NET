@@ -59,6 +59,9 @@ internal sealed class CliOptions
 
     public bool Has(string key) => _values.ContainsKey(key);
 
+    public IReadOnlyDictionary<string, string?> ToDictionary()
+        => new Dictionary<string, string?>(_values, StringComparer.OrdinalIgnoreCase);
+
     public string? GetString(string key, string? defaultValue = null)
     {
         if (!_values.TryGetValue(key, out var value))

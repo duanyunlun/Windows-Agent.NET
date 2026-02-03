@@ -1,8 +1,11 @@
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Windows.Agent.Tools.Desktop;
 using Windows.Agent.Tools.FileSystem;
 using Windows.Agent.Tools.SystemControl;
 using Windows.Agent.Tools.OCR;
+using Windows.Agent.Tools.Contracts;
+using Windows.Agent.Tools.Diagnostics;
 
 namespace Windows.Agent.Cli;
 
@@ -13,6 +16,7 @@ internal static class CliDispatcher
 
     public static async Task<int> RunAsync(string[] args, IServiceProvider services, TextWriter output)
     {
+        CliInvocation? invocation = null;
         try
         {
             if (args.Length == 0 || IsHelp(args[0]))
@@ -28,27 +32,66 @@ internal static class CliDispatcher
 
             var pretty = options.GetBool("pretty", false);
             var dangerous = options.GetBool("dangerous", false);
+            var snapshotOnError = options.GetBool("snapshot-on-error", false);
+            var session = options.GetString("session");
+
+            invocation = new CliInvocation(
+                group,
+                action,
+                options.ToDictionary(),
+                pretty,
+                dangerous,
+                snapshotOnError,
+                session);
 
             switch (group)
             {
                 case "desktop":
-                    return await RunDesktopAsync(action, options, services, pretty, dangerous, output);
+                    return await RunDesktopAsync(invocation, options, services, output);
                 case "fs":
                 case "filesystem":
-                    return await RunFileSystemAsync(action, options, services, pretty, dangerous, output);
+                    return await RunFileSystemAsync(invocation, options, services, output);
                 case "ocr":
-                    return await RunOcrAsync(action, options, services, pretty, dangerous, output);
+                    return await RunOcrAsync(invocation, options, services, output);
                 case "sys":
                 case "system":
-                    return await RunSystemAsync(action, options, services, pretty, dangerous, output);
+                    return await RunSystemAsync(invocation, options, services, output);
+                case "contract":
+                    return await RunContractAsync(invocation, options, services, output);
+                case "diag":
+                    return await RunDiagAsync(invocation, options, services, output);
                 default:
                     throw new ArgumentException($"Unknown command group: {group}");
             }
         }
         catch (Exception ex)
         {
-            var pretty = args.Any(a => a.Equals("--pretty", StringComparison.OrdinalIgnoreCase));
-            var payload = new { success = false, error = ex.Message };
+            var pretty = invocation?.Pretty ?? args.Any(a => a.Equals("--pretty", StringComparison.OrdinalIgnoreCase));
+            var (code, message) = MapCliException(ex);
+
+            object input = invocation != null
+                ? new { group = invocation.Group, action = invocation.Action, options = invocation.Options }
+                : new { args };
+
+            var payload = new
+            {
+                schemaVersion = "1.0",
+                success = false,
+                code,
+                message,
+                tool = (string?)null,
+                input,
+                result = (object?)null,
+                error = new
+                {
+                    kind = ex.GetType().Name,
+                    message = ex.Message,
+                    stack = ex.ToString()
+                },
+                artifacts = Array.Empty<object>(),
+                session = invocation?.Session
+            };
+
             output.WriteLine(CliJson.Serialize(payload, pretty));
             return 1;
         }
@@ -70,6 +113,8 @@ internal static class CliDispatcher
 通用 options：
   --pretty             JSON 美化输出
   --dangerous          启用高危命令（默认禁用；涉及桌面交互/写文件/改系统设置/执行命令等）
+  --snapshot-on-error  失败时自动采集 screenshot + state（作为 artifacts）
+  --session <string>   运行会话 ID（用于日志/证据归档）
 
 示例：
   windows-agent desktop click --x 100 --y 200 --dangerous
@@ -125,32 +170,82 @@ System：
   sys brightness [--inc|--dec] [--percent <int>]
   sys resolution --type high|medium|low
 
+Contract：
+  contract validate --path <string>
+  contract explain --path <string>
+
+Diag：
+  diag tail-log --path <string> [--lines <int>]
+
 说明：
   CLI 内部调用现存 Windows.Agent.Tools.* 类（而不是直接调用 Service）。
 ");
     }
 
-    private static int WriteToolResult(string tool, bool pretty, string raw, TextWriter output)
+    private static async Task<int> WriteToolResultAsync(CliInvocation invocation, string tool, string raw, IServiceProvider services, TextWriter output)
     {
-        object payload;
-        if (CliJson.TryParse(raw, out var parsed))
+        var hasParsed = CliJson.TryParse(raw, out var parsed);
+        var toolSuccess = GetToolSuccess(hasParsed ? parsed : (JsonElement?)null, raw);
+        var code = toolSuccess ? "OK" : "TOOL_FAILED";
+        var message = toolSuccess ? "OK" : GetToolMessage(hasParsed ? parsed : (JsonElement?)null, raw);
+
+        string? session = invocation.Session;
+        var artifacts = new List<object>();
+        if (!toolSuccess && invocation.SnapshotOnError)
         {
-            payload = new { success = true, tool, result = new { raw, parsed } };
-        }
-        else
-        {
-            payload = new { success = true, tool, result = new { raw } };
+            session ??= $"wa-{DateTime.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}";
+            artifacts.AddRange(await TryCollectFailureArtifactsAsync(session, services));
         }
 
-        output.WriteLine(CliJson.Serialize(payload, pretty));
-        return 0;
+        object? error = null;
+        if (!toolSuccess)
+        {
+            error = new
+            {
+                kind = hasParsed && TryGetBoolProperty(parsed, "success", out _) ? "ToolReportedFailure" : "ToolOutputIndicatesFailure",
+                message
+            };
+        }
+
+        var input = new { group = invocation.Group, action = invocation.Action, options = invocation.Options };
+        object payload = hasParsed
+            ? new
+            {
+                schemaVersion = "1.0",
+                success = toolSuccess,
+                code,
+                message,
+                tool,
+                input,
+                result = new { raw, parsed },
+                error,
+                artifacts,
+                session
+            }
+            : new
+            {
+                schemaVersion = "1.0",
+                success = toolSuccess,
+                code,
+                message,
+                tool,
+                input,
+                result = new { raw },
+                error,
+                artifacts,
+                session
+            };
+
+        output.WriteLine(CliJson.Serialize(payload, invocation.Pretty));
+        return toolSuccess ? 0 : 1;
     }
 
-    private static async Task<int> RunDesktopAsync(string action, CliOptions options, IServiceProvider services, bool pretty, bool dangerous, TextWriter output)
+    private static async Task<int> RunDesktopAsync(CliInvocation invocation, CliOptions options, IServiceProvider services, TextWriter output)
     {
+        var action = invocation.Action;
         if (RequiresDangerousDesktop(action))
         {
-            EnsureDangerous("desktop", action, dangerous);
+            EnsureDangerous("desktop", action, invocation.Dangerous);
         }
 
         switch (action)
@@ -163,7 +258,7 @@ System：
                 var button = options.GetString("button", "left") ?? "left";
                 var clicks = options.GetInt("clicks", 1);
                 var raw = await tool.ClickAsync(x, y, button, clicks);
-                return WriteToolResult("Windows.Agent.Tools.Desktop.ClickTool.ClickAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.ClickTool.ClickAsync", raw, services, output);
             }
             case "move":
             {
@@ -171,7 +266,7 @@ System：
                 var x = options.RequireInt("x");
                 var y = options.RequireInt("y");
                 var raw = await tool.MoveAsync(x, y);
-                return WriteToolResult("Windows.Agent.Tools.Desktop.MoveTool.MoveAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.MoveTool.MoveAsync", raw, services, output);
             }
             case "scroll":
             {
@@ -182,7 +277,7 @@ System：
                 var direction = options.GetString("direction", "down") ?? "down";
                 var wheelTimes = options.GetInt("wheel", 1);
                 var raw = await tool.ScrollAsync(x, y, type, direction, wheelTimes);
-                return WriteToolResult("Windows.Agent.Tools.Desktop.ScrollTool.ScrollAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.ScrollTool.ScrollAsync", raw, services, output);
             }
             case "type":
             {
@@ -194,48 +289,48 @@ System：
                 var pressEnter = options.GetBool("enter", false);
                 var interpret = options.GetBool("interpretSpecialCharacters", false);
                 var raw = await tool.TypeAsync(x, y, text, clear, pressEnter, interpret);
-                return WriteToolResult("Windows.Agent.Tools.Desktop.TypeTool.TypeAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.TypeTool.TypeAsync", raw, services, output);
             }
             case "state":
             {
                 var tool = services.GetRequiredService<StateTool>();
                 var useVision = options.GetBool("vision", false);
                 var raw = await tool.GetDesktopStateAsync(useVision);
-                return WriteToolResult("Windows.Agent.Tools.Desktop.StateTool.GetDesktopStateAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.StateTool.GetDesktopStateAsync", raw, services, output);
             }
             case "launch":
             {
                 var tool = services.GetRequiredService<LaunchTool>();
                 var name = options.RequireString("name");
                 var raw = await tool.LaunchAppAsync(name);
-                return WriteToolResult("Windows.Agent.Tools.Desktop.LaunchTool.LaunchAppAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.LaunchTool.LaunchAppAsync", raw, services, output);
             }
             case "switch":
             {
                 var tool = services.GetRequiredService<SwitchTool>();
                 var name = options.RequireString("name");
                 var raw = await tool.SwitchAppAsync(name);
-                return WriteToolResult("Windows.Agent.Tools.Desktop.SwitchTool.SwitchAppAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.SwitchTool.SwitchAppAsync", raw, services, output);
             }
             case "windowinfo":
             {
                 var tool = services.GetRequiredService<GetWindowInfoTool>();
                 var name = options.RequireString("name");
                 var raw = await tool.GetWindowInfoAsync(name);
-                return WriteToolResult("Windows.Agent.Tools.Desktop.GetWindowInfoTool.GetWindowInfoAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.GetWindowInfoTool.GetWindowInfoAsync", raw, services, output);
             }
             case "powershell":
             {
                 var tool = services.GetRequiredService<PowershellTool>();
                 var command = options.RequireString("command");
                 var raw = await tool.ExecuteCommandAsync(command);
-                return WriteToolResult("Windows.Agent.Tools.Desktop.PowershellTool.ExecuteCommandAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.PowershellTool.ExecuteCommandAsync", raw, services, output);
             }
             case "screenshot":
             {
                 var tool = services.GetRequiredService<ScreenshotTool>();
                 var raw = await tool.TakeScreenshotAsync();
-                return WriteToolResult("Windows.Agent.Tools.Desktop.ScreenshotTool.TakeScreenshotAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.ScreenshotTool.TakeScreenshotAsync", raw, services, output);
             }
             case "openbrowser":
             {
@@ -243,21 +338,21 @@ System：
                 var url = options.GetString("url");
                 var search = options.GetString("search");
                 var raw = await tool.OpenBrowserAsync(url, search);
-                return WriteToolResult("Windows.Agent.Tools.Desktop.OpenBrowserTool.OpenBrowserAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.OpenBrowserTool.OpenBrowserAsync", raw, services, output);
             }
             case "scrape":
             {
                 var tool = services.GetRequiredService<ScrapeTool>();
                 var url = options.RequireString("url");
                 var raw = await tool.ScrapeAsync(url);
-                return WriteToolResult("Windows.Agent.Tools.Desktop.ScrapeTool.ScrapeAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.ScrapeTool.ScrapeAsync", raw, services, output);
             }
             case "wait":
             {
                 var tool = services.GetRequiredService<WaitTool>();
                 var seconds = options.RequireInt("seconds");
                 var raw = await tool.WaitAsync(seconds);
-                return WriteToolResult("Windows.Agent.Tools.Desktop.WaitTool.WaitAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.WaitTool.WaitAsync", raw, services, output);
             }
             case "clipboard":
             {
@@ -265,7 +360,7 @@ System：
                 var mode = options.RequireString("mode");
                 var text = options.GetString("text");
                 var raw = await tool.ClipboardAsync(mode, text);
-                return WriteToolResult("Windows.Agent.Tools.Desktop.ClipboardTool.ClipboardAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.ClipboardTool.ClipboardAsync", raw, services, output);
             }
             case "drag":
             {
@@ -275,7 +370,7 @@ System：
                 var endX = options.RequireInt("endx");
                 var endY = options.RequireInt("endy");
                 var raw = await tool.DragAsync(startX, startY, endX, endY);
-                return WriteToolResult("Windows.Agent.Tools.Desktop.DragTool.DragAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.DragTool.DragAsync", raw, services, output);
             }
             case "resize":
             {
@@ -286,14 +381,14 @@ System：
                 var x = options.Has("x") ? options.RequireInt("x") : (int?)null;
                 var y = options.Has("y") ? options.RequireInt("y") : (int?)null;
                 var raw = await tool.ResizeAppAsync(name, width, height, x, y);
-                return WriteToolResult("Windows.Agent.Tools.Desktop.ResizeTool.ResizeAppAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.ResizeTool.ResizeAppAsync", raw, services, output);
             }
             case "key":
             {
                 var tool = services.GetRequiredService<KeyTool>();
                 var key = options.RequireString("key");
                 var raw = await tool.KeyAsync(key);
-                return WriteToolResult("Windows.Agent.Tools.Desktop.KeyTool.KeyAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.KeyTool.KeyAsync", raw, services, output);
             }
             case "shortcut":
             {
@@ -301,7 +396,7 @@ System：
                 var keysRaw = options.RequireString("keys");
                 var keys = SplitKeys(keysRaw);
                 var raw = await tool.ShortcutAsync(keys);
-                return WriteToolResult("Windows.Agent.Tools.Desktop.ShortcutTool.ShortcutAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.ShortcutTool.ShortcutAsync", raw, services, output);
             }
             case "ui-find":
             {
@@ -329,7 +424,7 @@ System：
                         throw new ArgumentException("Invalid --type. Allowed: text, className, automationId");
                 }
 
-                return WriteToolResult(toolName, pretty, raw, output);
+                return await WriteToolResultAsync(invocation, toolName, raw, services, output);
             }
             case "ui-props":
             {
@@ -337,7 +432,7 @@ System：
                 var x = options.RequireInt("x");
                 var y = options.RequireInt("y");
                 var raw = await tool.GetElementPropertiesAsync(x, y);
-                return WriteToolResult("Windows.Agent.Tools.Desktop.UIElementTool.GetElementPropertiesAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.UIElementTool.GetElementPropertiesAsync", raw, services, output);
             }
             case "ui-wait":
             {
@@ -346,18 +441,19 @@ System：
                 var value = options.RequireString("value");
                 var timeoutMs = options.GetInt("timeoutMs", 5000);
                 var raw = await tool.WaitForElementAsync(value, type, timeoutMs);
-                return WriteToolResult("Windows.Agent.Tools.Desktop.UIElementTool.WaitForElementAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.UIElementTool.WaitForElementAsync", raw, services, output);
             }
             default:
                 throw new ArgumentException($"Unknown desktop action: {action}");
         }
     }
 
-    private static async Task<int> RunFileSystemAsync(string action, CliOptions options, IServiceProvider services, bool pretty, bool dangerous, TextWriter output)
+    private static async Task<int> RunFileSystemAsync(CliInvocation invocation, CliOptions options, IServiceProvider services, TextWriter output)
     {
+        var action = invocation.Action;
         if (RequiresDangerousFileSystem(action))
         {
-            EnsureDangerous("fs", action, dangerous);
+            EnsureDangerous("fs", action, invocation.Dangerous);
         }
 
         switch (action)
@@ -367,7 +463,7 @@ System：
                 var tool = services.GetRequiredService<ReadFileTool>();
                 var path = options.RequireString("path");
                 var raw = await tool.ReadFileAsync(path);
-                return WriteToolResult("Windows.Agent.Tools.FileSystem.ReadFileTool.ReadFileAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.FileSystem.ReadFileTool.ReadFileAsync", raw, services, output);
             }
             case "write":
             {
@@ -376,7 +472,7 @@ System：
                 var content = options.RequireString("content");
                 var append = options.GetBool("append", false);
                 var raw = await tool.WriteFileAsync(path, content, append);
-                return WriteToolResult("Windows.Agent.Tools.FileSystem.WriteFileTool.WriteFileAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.FileSystem.WriteFileTool.WriteFileAsync", raw, services, output);
             }
             case "create":
             {
@@ -384,14 +480,14 @@ System：
                 var path = options.RequireString("path");
                 var content = options.RequireString("content");
                 var raw = await tool.CreateFileAsync(path, content);
-                return WriteToolResult("Windows.Agent.Tools.FileSystem.CreateFileTool.CreateFileAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.FileSystem.CreateFileTool.CreateFileAsync", raw, services, output);
             }
             case "delete":
             {
                 var tool = services.GetRequiredService<DeleteFileTool>();
                 var path = options.RequireString("path");
                 var raw = await tool.DeleteFileAsync(path);
-                return WriteToolResult("Windows.Agent.Tools.FileSystem.DeleteFileTool.DeleteFileAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.FileSystem.DeleteFileTool.DeleteFileAsync", raw, services, output);
             }
             case "copy":
             {
@@ -400,7 +496,7 @@ System：
                 var destination = options.RequireString("destination");
                 var overwrite = options.GetBool("overwrite", false);
                 var raw = await tool.CopyFileAsync(source, destination, overwrite);
-                return WriteToolResult("Windows.Agent.Tools.FileSystem.CopyFileTool.CopyFileAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.FileSystem.CopyFileTool.CopyFileAsync", raw, services, output);
             }
             case "move":
             {
@@ -409,14 +505,14 @@ System：
                 var destination = options.RequireString("destination");
                 var overwrite = options.GetBool("overwrite", false);
                 var raw = await tool.MoveFileAsync(source, destination, overwrite);
-                return WriteToolResult("Windows.Agent.Tools.FileSystem.MoveFileTool.MoveFileAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.FileSystem.MoveFileTool.MoveFileAsync", raw, services, output);
             }
             case "info":
             {
                 var tool = services.GetRequiredService<GetFileInfoTool>();
                 var path = options.RequireString("path");
                 var raw = await tool.GetFileInfoAsync(path);
-                return WriteToolResult("Windows.Agent.Tools.FileSystem.GetFileInfoTool.GetFileInfoAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.FileSystem.GetFileInfoTool.GetFileInfoAsync", raw, services, output);
             }
             case "list":
             {
@@ -426,7 +522,7 @@ System：
                 var includeDirs = options.GetBool("dirs", true);
                 var recursive = options.GetBool("recursive", false);
                 var raw = await tool.ListDirectoryAsync(path, includeFiles, includeDirs, recursive);
-                return WriteToolResult("Windows.Agent.Tools.FileSystem.ListDirectoryTool.ListDirectoryAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.FileSystem.ListDirectoryTool.ListDirectoryAsync", raw, services, output);
             }
             case "mkdir":
             {
@@ -434,7 +530,7 @@ System：
                 var path = options.RequireString("path");
                 var parents = options.GetBool("parents", true);
                 var raw = await tool.CreateDirectoryAsync(path, parents);
-                return WriteToolResult("Windows.Agent.Tools.FileSystem.CreateDirectoryTool.CreateDirectoryAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.FileSystem.CreateDirectoryTool.CreateDirectoryAsync", raw, services, output);
             }
             case "rmdir":
             {
@@ -442,7 +538,7 @@ System：
                 var path = options.RequireString("path");
                 var recursive = options.GetBool("recursive", false);
                 var raw = await tool.DeleteDirectoryAsync(path, recursive);
-                return WriteToolResult("Windows.Agent.Tools.FileSystem.DeleteDirectoryTool.DeleteDirectoryAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.FileSystem.DeleteDirectoryTool.DeleteDirectoryAsync", raw, services, output);
             }
             case "search-name":
             {
@@ -451,7 +547,7 @@ System：
                 var pattern = options.RequireString("pattern");
                 var recursive = options.GetBool("recursive", false);
                 var raw = await tool.SearchFilesByNameAsync(directory, pattern, recursive);
-                return WriteToolResult("Windows.Agent.Tools.FileSystem.SearchFilesTool.SearchFilesByNameAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.FileSystem.SearchFilesTool.SearchFilesByNameAsync", raw, services, output);
             }
             case "search-ext":
             {
@@ -460,22 +556,23 @@ System：
                 var ext = options.RequireString("ext");
                 var recursive = options.GetBool("recursive", false);
                 var raw = await tool.SearchFilesByExtensionAsync(directory, ext, recursive);
-                return WriteToolResult("Windows.Agent.Tools.FileSystem.SearchFilesTool.SearchFilesByExtensionAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.FileSystem.SearchFilesTool.SearchFilesByExtensionAsync", raw, services, output);
             }
             default:
                 throw new ArgumentException($"Unknown filesystem action: {action}");
         }
     }
 
-    private static async Task<int> RunOcrAsync(string action, CliOptions options, IServiceProvider services, bool pretty, bool dangerous, TextWriter output)
+    private static async Task<int> RunOcrAsync(CliInvocation invocation, CliOptions options, IServiceProvider services, TextWriter output)
     {
+        var action = invocation.Action;
         switch (action)
         {
             case "screen":
             {
                 var tool = services.GetRequiredService<ExtractTextFromScreenTool>();
                 var raw = await tool.ExtractTextFromScreenAsync();
-                return WriteToolResult("Windows.Agent.Tools.OCR.ExtractTextFromScreenTool.ExtractTextFromScreenAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.OCR.ExtractTextFromScreenTool.ExtractTextFromScreenAsync", raw, services, output);
             }
             case "region":
             {
@@ -485,43 +582,44 @@ System：
                 var width = options.RequireInt("width");
                 var height = options.RequireInt("height");
                 var raw = await tool.ExtractTextFromRegionAsync(x, y, width, height);
-                return WriteToolResult("Windows.Agent.Tools.OCR.ExtractTextFromRegionTool.ExtractTextFromRegionAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.OCR.ExtractTextFromRegionTool.ExtractTextFromRegionAsync", raw, services, output);
             }
             case "find":
             {
                 var tool = services.GetRequiredService<FindTextOnScreenTool>();
                 var text = options.RequireString("text");
                 var raw = await tool.FindTextOnScreenAsync(text);
-                return WriteToolResult("Windows.Agent.Tools.OCR.FindTextOnScreenTool.FindTextOnScreenAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.OCR.FindTextOnScreenTool.FindTextOnScreenAsync", raw, services, output);
             }
             case "coords":
             {
                 var tool = services.GetRequiredService<GetTextCoordinatesTool>();
                 var text = options.RequireString("text");
                 var raw = await tool.GetTextCoordinatesAsync(text);
-                return WriteToolResult("Windows.Agent.Tools.OCR.GetTextCoordinatesTool.GetTextCoordinatesAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.OCR.GetTextCoordinatesTool.GetTextCoordinatesAsync", raw, services, output);
             }
             case "file":
             {
                 var tool = services.GetRequiredService<ExtractTextFromFileTool>();
                 var path = options.RequireString("path");
                 var raw = await tool.ExtractTextFromFileAsync(path);
-                return WriteToolResult("Windows.Agent.Tools.OCR.ExtractTextFromFileTool.ExtractTextFromFileAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.OCR.ExtractTextFromFileTool.ExtractTextFromFileAsync", raw, services, output);
             }
             default:
                 throw new ArgumentException($"Unknown ocr action: {action}");
         }
     }
 
-    private static async Task<int> RunSystemAsync(string action, CliOptions options, IServiceProvider services, bool pretty, bool dangerous, TextWriter output)
+    private static async Task<int> RunSystemAsync(CliInvocation invocation, CliOptions options, IServiceProvider services, TextWriter output)
     {
+        var action = invocation.Action;
         switch (action)
         {
             case "volume":
             {
                 if (options.Has("inc") || options.Has("dec") || options.Has("percent") || options.Has("mute"))
                 {
-                    EnsureDangerous("sys", action, dangerous);
+                    EnsureDangerous("sys", action, invocation.Dangerous);
                 }
 
                 var tool = services.GetRequiredService<VolumeTool>();
@@ -529,32 +627,32 @@ System：
                 {
                     var mute = options.GetBool("mute", true);
                     var rawMute = await tool.SetMuteStateAsync(mute);
-                    return WriteToolResult("Windows.Agent.Tools.SystemControl.VolumeTool.SetMuteStateAsync", pretty, rawMute, output);
+                    return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.SystemControl.VolumeTool.SetMuteStateAsync", rawMute, services, output);
                 }
                 if (options.Has("percent"))
                 {
                     var percent = options.RequireInt("percent");
                     var raw = await tool.SetVolumePercentAsync(percent);
-                    return WriteToolResult("Windows.Agent.Tools.SystemControl.VolumeTool.SetVolumePercentAsync", pretty, raw, output);
+                    return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.SystemControl.VolumeTool.SetVolumePercentAsync", raw, services, output);
                 }
                 if (options.Has("inc"))
                 {
                     var raw = await tool.SetVolumeAsync(true);
-                    return WriteToolResult("Windows.Agent.Tools.SystemControl.VolumeTool.SetVolumeAsync", pretty, raw, output);
+                    return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.SystemControl.VolumeTool.SetVolumeAsync", raw, services, output);
                 }
                 if (options.Has("dec"))
                 {
                     var raw = await tool.SetVolumeAsync(false);
-                    return WriteToolResult("Windows.Agent.Tools.SystemControl.VolumeTool.SetVolumeAsync", pretty, raw, output);
+                    return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.SystemControl.VolumeTool.SetVolumeAsync", raw, services, output);
                 }
                 var rawGet = await tool.GetCurrentVolumeAsync();
-                return WriteToolResult("Windows.Agent.Tools.SystemControl.VolumeTool.GetCurrentVolumeAsync", pretty, rawGet, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.SystemControl.VolumeTool.GetCurrentVolumeAsync", rawGet, services, output);
             }
             case "brightness":
             {
                 if (options.Has("inc") || options.Has("dec") || options.Has("percent"))
                 {
-                    EnsureDangerous("sys", action, dangerous);
+                    EnsureDangerous("sys", action, invocation.Dangerous);
                 }
 
                 var tool = services.GetRequiredService<BrightnessTool>();
@@ -562,31 +660,73 @@ System：
                 {
                     var percent = options.RequireInt("percent");
                     var raw = await tool.SetBrightnessPercentAsync(percent);
-                    return WriteToolResult("Windows.Agent.Tools.SystemControl.BrightnessTool.SetBrightnessPercentAsync", pretty, raw, output);
+                    return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.SystemControl.BrightnessTool.SetBrightnessPercentAsync", raw, services, output);
                 }
                 if (options.Has("inc"))
                 {
                     var raw = await tool.SetBrightnessAsync(true);
-                    return WriteToolResult("Windows.Agent.Tools.SystemControl.BrightnessTool.SetBrightnessAsync", pretty, raw, output);
+                    return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.SystemControl.BrightnessTool.SetBrightnessAsync", raw, services, output);
                 }
                 if (options.Has("dec"))
                 {
                     var raw = await tool.SetBrightnessAsync(false);
-                    return WriteToolResult("Windows.Agent.Tools.SystemControl.BrightnessTool.SetBrightnessAsync", pretty, raw, output);
+                    return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.SystemControl.BrightnessTool.SetBrightnessAsync", raw, services, output);
                 }
                 var rawGet = await tool.GetCurrentBrightnessAsync();
-                return WriteToolResult("Windows.Agent.Tools.SystemControl.BrightnessTool.GetCurrentBrightnessAsync", pretty, rawGet, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.SystemControl.BrightnessTool.GetCurrentBrightnessAsync", rawGet, services, output);
             }
             case "resolution":
             {
-                EnsureDangerous("sys", action, dangerous);
+                EnsureDangerous("sys", action, invocation.Dangerous);
                 var tool = services.GetRequiredService<ResolutionTool>();
                 var type = options.RequireString("type");
                 var raw = await tool.SetResolutionAsync(type);
-                return WriteToolResult("Windows.Agent.Tools.SystemControl.ResolutionTool.SetResolutionAsync", pretty, raw, output);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.SystemControl.ResolutionTool.SetResolutionAsync", raw, services, output);
             }
             default:
                 throw new ArgumentException($"Unknown system action: {action}");
+        }
+    }
+
+    private static async Task<int> RunContractAsync(CliInvocation invocation, CliOptions options, IServiceProvider services, TextWriter output)
+    {
+        var action = invocation.Action;
+        switch (action)
+        {
+            case "validate":
+            {
+                var tool = services.GetRequiredService<ContractTool>();
+                var path = options.RequireString("path");
+                var raw = await tool.ValidateAsync(path);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Contracts.ContractTool.ValidateAsync", raw, services, output);
+            }
+            case "explain":
+            {
+                var tool = services.GetRequiredService<ContractTool>();
+                var path = options.RequireString("path");
+                var raw = await tool.ExplainAsync(path);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Contracts.ContractTool.ExplainAsync", raw, services, output);
+            }
+            default:
+                throw new ArgumentException($"Unknown contract action: {action}");
+        }
+    }
+
+    private static async Task<int> RunDiagAsync(CliInvocation invocation, CliOptions options, IServiceProvider services, TextWriter output)
+    {
+        var action = invocation.Action;
+        switch (action)
+        {
+            case "tail-log":
+            {
+                var tool = services.GetRequiredService<TailLogTool>();
+                var path = options.RequireString("path");
+                var lines = options.GetInt("lines", 200);
+                var raw = await tool.TailAsync(path, lines);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Diagnostics.TailLogTool.TailAsync", raw, services, output);
+            }
+            default:
+                throw new ArgumentException($"Unknown diag action: {action}");
         }
     }
 
@@ -610,10 +750,146 @@ System：
         => action is
             "write" or "create" or "delete" or "copy" or "move" or "mkdir" or "rmdir";
 
+    private static (string Code, string Message) MapCliException(Exception ex)
+    {
+        if (ex is InvalidOperationException ioe && ioe.Message.Contains("--dangerous", StringComparison.OrdinalIgnoreCase))
+        {
+            return ("POLICY_DENIED", ex.Message);
+        }
+
+        if (ex is ArgumentException)
+        {
+            return ("BAD_ARGS", ex.Message);
+        }
+
+        return ("CLI_ERROR", ex.Message);
+    }
+
+    private static bool GetToolSuccess(JsonElement? parsed, string raw)
+    {
+        if (parsed is { ValueKind: JsonValueKind.Object } p &&
+            TryGetBoolProperty(p, "success", out var success))
+        {
+            return success;
+        }
+
+        // 某些 Tool 返回普通字符串；做最小启发式判定（避免把明显错误当成成功）。
+        var head = raw.TrimStart();
+        if (head.StartsWith("Error", StringComparison.OrdinalIgnoreCase) ||
+            head.StartsWith("Failed", StringComparison.OrdinalIgnoreCase) ||
+            head.StartsWith("Exception", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string GetToolMessage(JsonElement? parsed, string raw)
+    {
+        if (parsed is { ValueKind: JsonValueKind.Object } p)
+        {
+            if (p.TryGetProperty("message", out var message) && message.ValueKind == JsonValueKind.String)
+            {
+                return message.GetString() ?? raw;
+            }
+
+            if (p.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.String)
+            {
+                return error.GetString() ?? raw;
+            }
+        }
+
+        return raw;
+    }
+
+    private static bool TryGetBoolProperty(JsonElement obj, string name, out bool value)
+    {
+        if (obj.TryGetProperty(name, out var prop) &&
+            (prop.ValueKind == JsonValueKind.True || prop.ValueKind == JsonValueKind.False))
+        {
+            value = prop.GetBoolean();
+            return true;
+        }
+
+        value = default;
+        return false;
+    }
+
+    private static async Task<IReadOnlyList<object>> TryCollectFailureArtifactsAsync(string session, IServiceProvider services)
+    {
+        var artifacts = new List<object>();
+        var root = Path.Combine(Path.GetTempPath(), "Windows.Agent", "artifacts", session);
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            var screenshotTool = services.GetService<ScreenshotTool>();
+            if (screenshotTool != null)
+            {
+                var screenshotPath = await screenshotTool.TakeScreenshotAsync();
+                var fileName = $"screenshot-{DateTime.Now:HHmmss}.png";
+                var dest = Path.Combine(root, fileName);
+                var final = await TryCopyAsync(screenshotPath, dest) ? dest : screenshotPath;
+                artifacts.Add(new { kind = "screenshot", path = final, note = "失败快照（自动采集）" });
+            }
+        }
+        catch
+        {
+            // 采集失败不应影响主流程：尽最大努力采集即可。
+        }
+
+        try
+        {
+            var stateTool = services.GetService<StateTool>();
+            if (stateTool != null)
+            {
+                var state = await stateTool.GetDesktopStateAsync(false);
+                var dest = Path.Combine(root, "desktop_state.txt");
+                await File.WriteAllTextAsync(dest, state);
+                artifacts.Add(new { kind = "desktop_state", path = dest, note = "失败时前台窗口与可见窗口列表（自动采集）" });
+            }
+        }
+        catch
+        {
+        }
+
+        return artifacts;
+
+        static async Task<bool> TryCopyAsync(string source, string dest)
+        {
+            try
+            {
+                if (!File.Exists(source))
+                {
+                    return false;
+                }
+
+                await using var src = File.OpenRead(source);
+                await using var dst = File.Open(dest, FileMode.Create, FileAccess.Write, FileShare.None);
+                await src.CopyToAsync(dst);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+    }
+
     private static string[] SplitKeys(string keys)
     {
         return keys
             .Split(new[] { '+', ',', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToArray();
     }
+
+    private sealed record CliInvocation(
+        string Group,
+        string Action,
+        IReadOnlyDictionary<string, string?> Options,
+        bool Pretty,
+        bool Dangerous,
+        bool SnapshotOnError,
+        string? Session);
 }

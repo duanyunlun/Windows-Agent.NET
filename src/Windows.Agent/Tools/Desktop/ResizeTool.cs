@@ -5,7 +5,7 @@ using Windows.Agent.Interface;
 namespace Windows.Agent.Tools.Desktop;
 
 /// <summary>
-/// MCP tool for resizing and moving application windows.
+/// 窗口调整工具（大小/位置）。
 /// </summary>
 public class ResizeTool
 {
