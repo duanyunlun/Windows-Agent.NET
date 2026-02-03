@@ -83,6 +83,76 @@ namespace Windows.Agent.Test.Desktop
             }
         }
 
+        [Fact]
+        public async Task Uia_SetValue_And_Invoke_WithBackendUia2_ShouldWriteExpectedOutput()
+        {
+            var outPath = Path.Combine(Path.GetTempPath(), $"wa-uia2-{Guid.NewGuid():N}.txt");
+            var windowTitle = "Windows.Agent UIA Test App";
+            var windowTitleRegex = Regex.Escape(windowTitle);
+
+            Process? app = null;
+            try
+            {
+                var appPath = ResolveTestAppPath();
+                app = Process.Start(new ProcessStartInfo
+                {
+                    FileName = appPath,
+                    Arguments = $"--out \"{outPath}\"",
+                    UseShellExecute = true
+                });
+
+                Assert.NotNull(app);
+                await WaitForFileAsync(() => app!.MainWindowHandle != IntPtr.Zero, TimeSpan.FromSeconds(10));
+
+                var services = new ServiceCollection();
+                services.AddLogging(builder => builder.AddConsole());
+                services.AddSingleton<IUiaService, UiaService>();
+                var sp = services.BuildServiceProvider();
+                var uia = sp.GetRequiredService<IUiaService>();
+
+                var backend = "uia2";
+                var setValueRaw = await uia.SetValueAsync(
+                    windowTitleRegex,
+                    new UiaSelector(AutomationId: "txtInput", ControlType: "Edit"),
+                    "hello-uia2",
+                    backend);
+                AssertSuccess(setValueRaw);
+
+                var invokeRaw = await uia.InvokeAsync(
+                    windowTitleRegex,
+                    new UiaSelector(AutomationId: "btnInvoke", ControlType: "Button"),
+                    backend);
+                AssertSuccess(invokeRaw);
+
+                await WaitForFileAsync(() => File.Exists(outPath), TimeSpan.FromSeconds(5));
+                var content = await File.ReadAllTextAsync(outPath);
+                Assert.Equal("hello-uia2", content);
+            }
+            finally
+            {
+                if (app != null)
+                {
+                    try
+                    {
+                        if (!app.HasExited)
+                        {
+                            app.Kill();
+                            app.WaitForExit(3000);
+                        }
+                    }
+                    catch
+                    {
+                        // best effort
+                    }
+                }
+
+                if (File.Exists(outPath))
+                {
+                    File.Delete(outPath);
+                }
+            }
+        }
+
         private static void AssertSuccess(string raw)
         {
             using var doc = JsonDocument.Parse(raw);
