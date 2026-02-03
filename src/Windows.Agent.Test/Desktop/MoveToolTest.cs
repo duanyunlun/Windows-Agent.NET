@@ -10,6 +10,7 @@ namespace Windows.Agent.Test.Desktop
     /// MoveTool单元测试类
     /// </summary>
     [Trait("Category", "Desktop")]
+    [Collection("Desktop")]
     public class MoveToolTest
     {
         private readonly IDesktopService _desktopService;

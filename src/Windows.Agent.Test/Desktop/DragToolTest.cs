@@ -10,6 +10,7 @@ namespace Windows.Agent.Test.Desktop
     /// DragTool单元测试类
     /// </summary>
     [Trait("Category", "Desktop")]
+    [Collection("Desktop")]
     public class DragToolTest
     {
         private readonly IDesktopService _desktopService;

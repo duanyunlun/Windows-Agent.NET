@@ -8,6 +8,7 @@ using Windows.Agent.Services;
 namespace Windows.Agent.Test.Desktop
 {
     [Trait("Category", "Desktop")]
+    [Collection("Desktop")]
     public class TypeToolTestV2
     {
         private readonly IDesktopService _desktopService;

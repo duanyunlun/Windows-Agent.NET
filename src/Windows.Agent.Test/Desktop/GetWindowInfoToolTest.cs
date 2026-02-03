@@ -10,6 +10,7 @@ namespace Windows.Agent.Test.Desktop
     /// GetWindowInfoTool单元测试类
     /// </summary>
     [Trait("Category", "Desktop")]
+    [Collection("Desktop")]
     public class GetWindowInfoToolTest
     {
         private readonly IDesktopService _desktopService;

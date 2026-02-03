@@ -10,6 +10,7 @@ namespace Windows.Agent.Test.Desktop
     /// ClickTool单元测试类
     /// </summary>
     [Trait("Category", "Desktop")]
+    [Collection("Desktop")]
     public class ClickToolTest
     {
         private readonly IDesktopService _desktopService;

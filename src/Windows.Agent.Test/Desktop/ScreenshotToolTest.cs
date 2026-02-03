@@ -11,6 +11,7 @@ namespace Windows.Agent.Test.Desktop
     /// ScreenshotTool单元测试类
     /// </summary>
     [Trait("Category", "Desktop")]
+    [Collection("Desktop")]
     public class ScreenshotToolTest
     {
         private readonly IDesktopService _desktopService;

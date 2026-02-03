@@ -10,6 +10,7 @@ namespace Windows.Agent.Test.Desktop
     /// ShortcutTool单元测试类
     /// </summary>
     [Trait("Category", "Desktop")]
+    [Collection("Desktop")]
     public class ShortcutToolTest
     {
         private readonly IDesktopService _desktopService;

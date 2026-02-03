@@ -10,6 +10,7 @@ namespace Windows.Agent.Test.Desktop
     /// PowershellTool单元测试类
     /// </summary>
     [Trait("Category", "Desktop")]
+    [Collection("Desktop")]
     public class PowershellToolTest
     {
         private readonly IDesktopService _desktopService;

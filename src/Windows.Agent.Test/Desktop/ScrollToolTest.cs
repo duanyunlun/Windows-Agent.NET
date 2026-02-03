@@ -10,6 +10,7 @@ namespace Windows.Agent.Test.Desktop
     /// ScrollTool单元测试类
     /// </summary>
     [Trait("Category", "Desktop")]
+    [Collection("Desktop")]
     public class ScrollToolTest
     {
         private readonly IDesktopService _desktopService;

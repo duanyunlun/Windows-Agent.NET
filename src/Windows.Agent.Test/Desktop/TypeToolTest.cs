@@ -10,6 +10,7 @@ namespace Windows.Agent.Test.Desktop
     /// TypeTool单元测试类
     /// </summary>
     [Trait("Category", "Desktop")]
+    [Collection("Desktop")]
     public class TypeToolTest
     {
         private readonly IDesktopService _desktopService;

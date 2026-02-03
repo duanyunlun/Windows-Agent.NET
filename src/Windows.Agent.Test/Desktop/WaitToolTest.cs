@@ -10,6 +10,7 @@ namespace Windows.Agent.Test.Desktop
     /// WaitTool单元测试类
     /// </summary>
     [Trait("Category", "Desktop")]
+    [Collection("Desktop")]
     public class WaitToolTest
     {
         private readonly IDesktopService _desktopService;

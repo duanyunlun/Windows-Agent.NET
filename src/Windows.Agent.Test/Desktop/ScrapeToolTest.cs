@@ -11,6 +11,7 @@ namespace Windows.Agent.Test.Desktop
     /// ScrapeTool单元测试类
     /// </summary>
     [Trait("Category", "Desktop")]
+    [Collection("Desktop")]
     public class ScrapeToolTest
     {
         private readonly IDesktopService _desktopService;

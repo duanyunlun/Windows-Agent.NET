@@ -10,6 +10,7 @@ namespace Windows.Agent.Test.Desktop
     /// ClipboardTool单元测试类
     /// </summary>
     [Trait("Category", "Desktop")]
+    [Collection("Desktop")]
     public class ClipboardToolTest
     {
         private readonly IDesktopService _desktopService;

@@ -11,6 +11,7 @@ namespace Windows.Agent.Test.Desktop
     /// ResizeTool单元测试类
     /// </summary>
     [Trait("Category", "Desktop")]
+    [Collection("Desktop")]
     public class ResizeToolTest
     {
         private readonly IDesktopService _desktopService;

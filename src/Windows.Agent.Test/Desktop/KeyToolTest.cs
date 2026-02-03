@@ -10,6 +10,7 @@ namespace Windows.Agent.Test.Desktop
     /// KeyTool单元测试类
     /// </summary>
     [Trait("Category", "Desktop")]
+    [Collection("Desktop")]
     public class KeyToolTest
     {
         private readonly IDesktopService _desktopService;
