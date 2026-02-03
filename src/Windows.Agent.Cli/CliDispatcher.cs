@@ -143,6 +143,10 @@ Desktop：
   desktop ui-find --type text|className|automationId --value <string>
   desktop ui-props --x <int> --y <int>
   desktop ui-wait --type text|className|automationId --value <string> [--timeoutMs <int>]
+  desktop uia-tree --window <titleRegex> [--depth <int>]
+  desktop uia-find --window <titleRegex> --selector <string> [--limit <int>]
+  desktop uia-invoke --window <titleRegex> --selector <string>
+  desktop uia-setvalue --window <titleRegex> --selector <string> --value <string>
 
 FileSystem：
   fs read --path <string>
@@ -442,6 +446,40 @@ Diag：
                 var timeoutMs = options.GetInt("timeoutMs", 5000);
                 var raw = await tool.WaitForElementAsync(value, type, timeoutMs);
                 return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.UIElementTool.WaitForElementAsync", raw, services, output);
+            }
+            case "uia-tree":
+            {
+                var tool = services.GetRequiredService<UiaTool>();
+                var window = options.RequireString("window");
+                var depth = options.GetInt("depth", 3);
+                var raw = await tool.GetTreeAsync(window, depth);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.UiaTool.GetTreeAsync", raw, services, output);
+            }
+            case "uia-find":
+            {
+                var tool = services.GetRequiredService<UiaTool>();
+                var window = options.RequireString("window");
+                var selector = options.RequireString("selector");
+                var limit = options.GetInt("limit", 5);
+                var raw = await tool.FindAsync(window, selector, limit);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.UiaTool.FindAsync", raw, services, output);
+            }
+            case "uia-invoke":
+            {
+                var tool = services.GetRequiredService<UiaTool>();
+                var window = options.RequireString("window");
+                var selector = options.RequireString("selector");
+                var raw = await tool.InvokeAsync(window, selector);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.UiaTool.InvokeAsync", raw, services, output);
+            }
+            case "uia-setvalue":
+            {
+                var tool = services.GetRequiredService<UiaTool>();
+                var window = options.RequireString("window");
+                var selector = options.RequireString("selector");
+                var value = options.RequireString("value");
+                var raw = await tool.SetValueAsync(window, selector, value);
+                return await WriteToolResultAsync(invocation, "Windows.Agent.Tools.Desktop.UiaTool.SetValueAsync", raw, services, output);
             }
             default:
                 throw new ArgumentException($"Unknown desktop action: {action}");
@@ -744,7 +782,8 @@ Diag：
         => action is
             "launch" or "switch" or "resize" or
             "click" or "move" or "drag" or "scroll" or "type" or "key" or "shortcut" or "clipboard" or
-            "openbrowser" or "powershell";
+            "openbrowser" or "powershell" or
+            "uia-invoke" or "uia-setvalue";
 
     private static bool RequiresDangerousFileSystem(string action)
         => action is

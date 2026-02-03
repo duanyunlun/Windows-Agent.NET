@@ -30,6 +30,7 @@ internal static class ToolRegistry
         services.AddTransient<SwitchTool>();
         services.AddTransient<TypeTool>();
         services.AddTransient<UIElementTool>();
+        services.AddTransient<UiaTool>();
         services.AddTransient<WaitTool>();
 
         services.AddTransient<ReadFileTool>();

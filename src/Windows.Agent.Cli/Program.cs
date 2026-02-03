@@ -17,7 +17,8 @@ services
     .AddSingleton<IDesktopService, DesktopService>()
     .AddSingleton<IFileSystemService, FileSystemService>()
     .AddSingleton<IOcrService, OcrService>()
-    .AddSingleton<ISystemControlService, SystemControlService>();
+    .AddSingleton<ISystemControlService, SystemControlService>()
+    .AddSingleton<IUiaService, UiaService>();
 
 // Tool 作为可调用单元注册到容器中（CLI 内部通过 Tool 调用能力）。
 ToolRegistry.Register(services);

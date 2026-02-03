@@ -9,6 +9,7 @@ using Windows.Agent.Tools.OCR;
 using Windows.Agent.Tools.SystemControl;
 using Windows.Agent.Tools.Contracts;
 using Windows.Agent.Tools.Diagnostics;
+using Windows.Agent.Uia;
 
 namespace Windows.Agent.Cli.Test;
 
@@ -186,6 +187,120 @@ public class CliDispatcherTests
         Assert.False(doc.RootElement.GetProperty("success").GetBoolean());
         Assert.Equal("POLICY_DENIED", doc.RootElement.GetProperty("code").GetString());
         Assert.Contains("--dangerous", doc.RootElement.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task DesktopUiaTree_ShouldInvokeUiaService()
+    {
+        var uia = new Mock<IUiaService>(MockBehavior.Strict);
+        uia
+            .Setup(s => s.GetTreeAsync("AppA", 2))
+            .ReturnsAsync("{\"success\":true,\"windowTitleRegex\":\"AppA\",\"depth\":2}");
+
+        var sp = BuildServiceProvider(services =>
+        {
+            services.AddSingleton(uia.Object);
+            services.AddTransient<UiaTool>();
+        });
+
+        var output = new StringWriter();
+        var exit = await CliDispatcher.RunAsync(
+            new[] { "desktop", "uia-tree", "--window", "AppA", "--depth", "2", "--pretty" },
+            sp,
+            output);
+
+        Assert.Equal(0, exit);
+        uia.VerifyAll();
+
+        using var doc = JsonDocument.Parse(output.ToString());
+        Assert.Equal("1.0", doc.RootElement.GetProperty("schemaVersion").GetString());
+        Assert.True(doc.RootElement.GetProperty("success").GetBoolean());
+        Assert.Equal("Windows.Agent.Tools.Desktop.UiaTool.GetTreeAsync", doc.RootElement.GetProperty("tool").GetString());
+    }
+
+    [Fact]
+    public async Task DesktopUiaInvoke_WithoutDangerous_ShouldFailBeforeResolvingTool()
+    {
+        var sp = BuildServiceProvider(_ => { });
+
+        var output = new StringWriter();
+        var exit = await CliDispatcher.RunAsync(
+            new[] { "desktop", "uia-invoke", "--window", "AppA", "--selector", "name=OK", "--pretty" },
+            sp,
+            output);
+
+        Assert.Equal(1, exit);
+
+        using var doc = JsonDocument.Parse(output.ToString());
+        Assert.False(doc.RootElement.GetProperty("success").GetBoolean());
+        Assert.Equal("POLICY_DENIED", doc.RootElement.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task DesktopUiaFind_WithBadSelector_ShouldFailWithToolFailed()
+    {
+        var uia = new Mock<IUiaService>(MockBehavior.Strict);
+
+        var sp = BuildServiceProvider(services =>
+        {
+            services.AddSingleton(uia.Object);
+            services.AddTransient<UiaTool>();
+        });
+
+        var output = new StringWriter();
+        var exit = await CliDispatcher.RunAsync(
+            new[] { "desktop", "uia-find", "--window", "AppA", "--selector", "bad", "--pretty" },
+            sp,
+            output);
+
+        Assert.Equal(1, exit);
+        uia.VerifyAll();
+
+        using var doc = JsonDocument.Parse(output.ToString());
+        Assert.False(doc.RootElement.GetProperty("success").GetBoolean());
+        Assert.Equal("TOOL_FAILED", doc.RootElement.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task DesktopUiaFind_WithSelector_ShouldParseAndInvokeUiaService()
+    {
+        var uia = new Mock<IUiaService>(MockBehavior.Strict);
+        uia
+            .Setup(s => s.FindAsync(
+                "AppA",
+                It.Is<UiaSelector>(sel => sel.AutomationId == "btnSendHttp" && sel.ControlType == "Button"),
+                7))
+            .ReturnsAsync("{\"success\":true,\"matchCount\":1}");
+
+        var sp = BuildServiceProvider(services =>
+        {
+            services.AddSingleton(uia.Object);
+            services.AddTransient<UiaTool>();
+        });
+
+        var output = new StringWriter();
+        var exit = await CliDispatcher.RunAsync(
+            new[]
+            {
+                "desktop",
+                "uia-find",
+                "--window",
+                "AppA",
+                "--selector",
+                "automationId=btnSendHttp;controlType=Button",
+                "--limit",
+                "7",
+                "--pretty"
+            },
+            sp,
+            output);
+
+        Assert.Equal(0, exit);
+        uia.VerifyAll();
+
+        using var doc = JsonDocument.Parse(output.ToString());
+        Assert.True(doc.RootElement.GetProperty("success").GetBoolean());
+        Assert.Equal("Windows.Agent.Tools.Desktop.UiaTool.FindAsync", doc.RootElement.GetProperty("tool").GetString());
     }
 
     [Fact]
